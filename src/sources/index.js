@@ -1,0 +1,18 @@
+import { request,stripHTML } from '../util.js';
+const date=d=>d.toISOString().slice(0,10);
+export async function fetchCandidates(category, config, {now=new Date(),get=request}={}) {
+ const spec=config.sources[category], warnings=[], results=[], batches=[];
+ const from=date(new Date(now-config.maxAgeDays*86400000));
+ const providers={
+  guardian: async()=>{ if(!process.env.GUARDIAN_KEY)return []; const u=new URL('https://content.guardianapis.com/search'); u.search=new URLSearchParams({'api-key':process.env.GUARDIAN_KEY,'page-size':'30','show-fields':'bodyText','order-by':'newest','from-date':from,section:spec.guardianSection,q:spec.query}); const d=await get(u); return (d.response?.results||[]).map(a=>({title:a.webTitle,url:a.webUrl,text:a.fields?.bodyText,source:'The Guardian',published:a.webPublicationDate})); },
+  gnews: async()=>{if(!process.env.GNEWS_KEY)return []; const u=new URL('https://gnews.io/api/v4/search');u.search=new URLSearchParams({apikey:process.env.GNEWS_KEY,q:spec.query,lang:'en',max:'10',from:`${from}T00:00:00Z`,sortby:'publishedAt'}); const d=await get(u);return (d.articles||[]).map(a=>({title:a.title,url:a.url,text:`${a.description||''} ${a.content||''}`.replace(/\[\+\d+ chars\]/g,''),source:a.source.name,published:a.publishedAt}));},
+  nasa:async()=>{if(!process.env.NASA_KEY)return [];const u=new URL('https://api.nasa.gov/planetary/apod');u.search=new URLSearchParams({api_key:process.env.NASA_KEY,start_date:from,end_date:date(now)});const d=await get(u);return d.map(a=>({title:a.title,url:`https://apod.nasa.gov/apod/ap${a.date.slice(2).replaceAll('-','')}.html`,text:a.explanation,source:'NASA APOD',published:a.date}));},
+  wikipedia:async()=>{const d=await get(`https://en.wikipedia.org/api/rest_v1/feed/featured/${date(now).replaceAll('-','/')}`,{headers:{'User-Agent':process.env.WIKIMEDIA_USER_AGENT||'NewsCarousel/1.0 (automated educational summaries)'}});return (d.news||[]).flatMap(n=>(n.links||[]).map(a=>({title:a.titles?.normalized||a.title,url:a.content_urls?.desktop?.page,text:stripHTML(n.story)+' '+(a.extract||''),source:'Wikipedia',published:date(now)}))).filter(a=>new RegExp(spec.query.split(' ').join('|'),'i').test(a.title+' '+a.text));},
+  worldbank:async()=>{const rows=[];for(const indicator of config.worldbank.indicators){const d=await get(`https://api.worldbank.org/v2/country/${config.worldbank.countries.join(';')}/indicator/${indicator}?format=json&mrnev=1&per_page=100`);for(const a of d[1]||[])if(a.value!==null)rows.push({title:`${a.country.value}: ${a.indicator.value} (${a.date})`,url:`https://data.worldbank.org/indicator/${indicator}?locations=${a.countryiso3code}&year=${a.date}`,text:`World Bank data for ${a.country.value}. Indicator: ${a.indicator.value}. Reference year: ${a.date}. Value: ${a.value}. This is historical annual data, not breaking news.`,source:'World Bank',published:date(now),kind:'historical-data'});}return rows;}
+ };
+ for(const name of spec.providers){try{if(!providers[name])throw new Error(`Unknown source ${name}`);batches.push(await providers[name]());}catch(e){warnings.push(`${name}: ${e.message}`);}}
+ for(let i=0;batches.some(b=>i<b.length);i++)for(const batch of batches)if(batch[i])results.push(batch[i]);
+ const candidates=results.filter(a=>a.url?.startsWith('https://')&&a.text?.length>=160&&a.title&&Number.isFinite(Date.parse(a.published))&&now-new Date(a.published)<(config.maxAgeDays+1)*86400000).map(a=>({...a,text:stripHTML(a.text).slice(0,18000)})).slice(0,config.candidateLimit);
+ if(!candidates.length)throw new Error(`No sufficiently sourced candidates. ${warnings.join('; ')}`);
+ return {candidates,warnings};
+}

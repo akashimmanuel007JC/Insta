@@ -1,0 +1,21 @@
+{
+  "categories": ["World","Business","Tech","Science","Space","Health","Sports","India"],
+  "schedule": {"timezone":"Asia/Kolkata","dailyPosts":6,"startHour":7,"endHour":21,"intervalHours":2,"maxDelayMinutes":90,"rotationEpoch":"2026-01-01"},
+  "sources": {
+    "World":{"providers":["guardian","gnews","wikipedia"],"query":"world","guardianSection":"world"},
+    "Business":{"providers":["guardian","gnews","worldbank"],"query":"economy","guardianSection":"business"},
+    "Tech":{"providers":["guardian","gnews","wikipedia"],"query":"technology","guardianSection":"technology"},
+    "Science":{"providers":["guardian","gnews","wikipedia"],"query":"science","guardianSection":"science"},
+    "Space":{"providers":["nasa","guardian","gnews"],"query":"space astronomy","guardianSection":"science"},
+    "Health":{"providers":["guardian","gnews","wikipedia"],"query":"health","guardianSection":"society"},
+    "Sports":{"providers":["guardian","gnews","wikipedia"],"query":"sport","guardianSection":"sport"},
+    "India":{"providers":["guardian","gnews","wikipedia"],"query":"India","guardianSection":"world"}
+  },
+  "candidateLimit":30,"maxAgeDays":3,"dedupeDays":30,"titleSimilarity":0.72,
+  "llm":{"baseUrl":"https://api.openai.com/v1","model":"gpt-4.1-mini"},
+  "image":{"baseUrl":"https://api.openai.com/v1","model":"gpt-image-1","style":"Editorial paper-cut illustration, midnight navy and warm coral, bold simple shapes, no lettering, no people, no photorealism"},
+  "instagram":{"loginMode":"instagram","apiVersion":"v25.0"},
+  "brand":{"name":"DAILY CONTEXT","watermark":"@yourhandle","font":"DejaVu Sans"},
+  "hosting":{"retentionDays":7},
+  "worldbank":{"countries":["IND","USA","CHN","BRA","GBR"],"indicators":["NY.GDP.MKTP.KD.ZG","FP.CPI.TOTL.ZG"]}
+}

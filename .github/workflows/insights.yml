@@ -1,0 +1,67 @@
+name: Daily insights and token maintenance
+on:
+  schedule:
+    - cron: '15 18 * * *'
+  workflow_dispatch:
+env:
+  STATE_BRANCH: ${{ github.event.repository.default_branch }}
+concurrency:
+  group: instagram-state
+  cancel-in-progress: false
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+jobs:
+  insights:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+      FB_APP_ID: ${{ secrets.FB_APP_ID }}
+      FB_APP_SECRET: ${{ secrets.FB_APP_SECRET }}
+      GH_SECRETS_TOKEN: ${{ secrets.GH_SECRETS_TOKEN }}
+      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: |
+          git config user.name 'carousel-bot'
+          git config user.email 'carousel-bot@users.noreply.github.com'
+      - run: npm run insights
+        id: collect
+        continue-on-error: true
+      - run: node scripts/build-pages.js
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .pages-build
+      - if: steps.collect.outcome == 'failure'
+        run: exit 1
+  deploy:
+    needs: insights
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+    steps:
+      - uses: actions/deploy-pages@v4
+  alert:
+    needs: [insights, deploy]
+    if: always() && contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: node --input-type=module -e "import {alert} from './src/alert.js'; await alert('Daily insights or dashboard deployment failed. Inspect Actions logs.');"
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
