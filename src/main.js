@@ -1,4 +1,5 @@
 import {pathToFileURL} from 'node:url';
+import {rm} from 'node:fs/promises';
 import {readJSON,writeJSON,safeError,required} from './util.js';
 import {getSlot} from './schedule.js';
 import {fetchCandidates} from './sources/index.js';
@@ -29,7 +30,6 @@ export async function prepare({config,now=new Date(),dry=process.env.DRY_RUN==='
  const buffers=mock?await m.mockImages(copy):await (services.images||images)(copy,config);
  const paths=await compose(buffers,copy,config,`output/${record.story_id}`);
  if(dry){record.status='dry_run';await saveLogs(logs,logRoot);const result={status:'dry_run',slot,script:copy,paths};await writeJSON('output/result.json',result);return result;}
- required('TELEGRAM_TOKEN');required('TELEGRAM_CHAT_ID');
  if(config.instagram.loginMode==='instagram')required('GH_SECRETS_TOKEN');
  await token(config,{refresh:false}); // Maintenance refresh runs in the separate daily workflow.
  record.status='posting';logs.used.push({url:chosen.url,title:chosen.title,timestamp:now.toISOString()});
@@ -45,7 +45,9 @@ export async function finish(){
  if(!record||record.status!=='posting'||record.publish_requested_at)throw new Error('Missing fresh posting reservation; manual reconciliation required');
  try{await verifyURLs(pending.urls);const accessToken=await token(config,{refresh:false});
  record.ig_media_id=await publish(pending.urls,pending.script,graph(config,accessToken),{persist:async patch=>{Object.assign(record,patch);await saveLogs(logs);await checkpoint('Persist Instagram publish progress');}});
- record.status='published';record.timestamp=new Date().toISOString();await saveLogs(logs);await checkpoint('Record published carousel');return record;
+ record.status='published';record.timestamp=new Date().toISOString();await saveLogs(logs);await checkpoint('Record published carousel');
+ try{await rm(`output/${record.story_id}`,{recursive:true,force:true});await rm('output/pending.json',{force:true});}catch{}
+ return record;
  }catch(e){record.status='uncertain';record.error=safeError(e);await saveLogs(logs);await checkpoint('Record uncertain publish').catch(()=>{});await alert(`Carousel needs review; will not retry: ${safeError(e)}`);throw e;}
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){try{const result=process.argv[2]==='finish'?await finish():await prepare();console.log(JSON.stringify(result,null,2));}catch(e){console.error(safeError(e));process.exitCode=1;}}

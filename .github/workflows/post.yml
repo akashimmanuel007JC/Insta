@@ -1,7 +1,7 @@
 name: Scheduled carousel
 on:
   schedule:
-    - cron: '30 1,3,5,7,9,11,13,15 * * *'
+    - cron: '30 1,4,7,10,13,16 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -38,6 +38,14 @@ jobs:
       PAGES_BASE_URL: ${{ vars.PAGES_BASE_URL }}
       LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
       IMAGE_API_KEY: ${{ secrets.IMAGE_API_KEY }}
+      AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+      AZURE_OPENAI_API_VERSION: ${{ secrets.AZURE_OPENAI_API_VERSION }}
+      AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+      AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
+      AZURE_OPENAI_IMAGE_API_KEY_1: ${{ secrets.AZURE_OPENAI_IMAGE_API_KEY_1 }}
+      AZURE_OPENAI_IMAGE_API_VERSION_1: ${{ secrets.AZURE_OPENAI_IMAGE_API_VERSION_1 }}
+      AZURE_OPENAI_IMAGE_ENDPOINT_1: ${{ secrets.AZURE_OPENAI_IMAGE_ENDPOINT_1 }}
+      AZURE_OPENAI_IMAGE_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_IMAGE_DEPLOYMENT }}
       GUARDIAN_KEY: ${{ secrets.GUARDIAN_KEY }}
       GNEWS_KEY: ${{ secrets.GNEWS_KEY }}
       NASA_KEY: ${{ secrets.NASA_KEY }}

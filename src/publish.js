@@ -18,9 +18,11 @@ export async function publishingLimit(api,user) {
  if(q.quota_usage>=q.config.quota_total)throw new Error('Publishing limit reached');
 }
 export async function publish(urls,script,api,{user=required('IG_USER_ID'),persist=async()=>{},waitOptions}={}) {
- await publishingLimit(api,user);const children=[];
- for(const image_url of urls){const child=await api(`${user}/media`,{image_url,is_carousel_item:'true'},'POST');if(!child.id)throw new Error('Missing child container id');children.push(child.id);await persist({children:[...children]});await waitFinished(child.id,api,waitOptions);}
- const parent=await api(`${user}/media`,{media_type:'CAROUSEL',children:children.join(','),caption:`${script.caption}\n\n${script.hashtags.join(' ')}`},'POST');if(!parent.id)throw new Error('Missing parent container id');await persist({container_id:parent.id});
+ if(urls.length!==1)throw new Error('Single-image publishing requires exactly one image');
+ await publishingLimit(api,user);
+ const parent=await api(`${user}/media`,{image_url:urls[0],caption:`${script.caption}\n\n${script.hashtags.join(' ')}`},'POST');
+ if(!parent.id)throw new Error('Missing image container id');
+ await persist({container_id:parent.id});
  await waitFinished(parent.id,api,waitOptions);await publishingLimit(api,user);
  await persist({publish_requested_at:new Date().toISOString()});
  const result=await api(`${user}/media_publish`,{creation_id:parent.id},'POST');if(!result.id)throw new Error('Publish outcome unknown');return result.id;

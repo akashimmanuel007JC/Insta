@@ -10,7 +10,9 @@
     "start": "node src/main.js",
     "test": "node --test",
     "dry-run": "DRY_RUN=true MOCK_APIS=true node src/main.js",
-    "insights": "node src/insights.js"
+    "insights": "node src/insights.js",
+    "local": "node --env-file=.env scripts/local.js",
+    "studio": "node --env-file=.env server.js"
   },
   "dependencies": {
     "sharp": "^0.35.5"

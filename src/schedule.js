@@ -1,7 +1,7 @@
 export function getSlot(config, now=new Date(), explicit) {
   const s=config.schedule;
   if(s.timezone!=='Asia/Kolkata') throw new Error('Cron and slot calculation require Asia/Kolkata');
-  if(!Number.isInteger(s.dailyPosts)||s.dailyPosts<1||s.dailyPosts>8||s.startHour<7||s.endHour>21||s.intervalHours!==2||s.startHour%2!==1||s.endHour%2!==1) throw new Error('Schedule must fit the eight configured cron wakeups');
+  if(!Number.isInteger(s.dailyPosts)||s.dailyPosts<1||s.dailyPosts>8||s.startHour<0||s.endHour>23||![2,3].includes(s.intervalHours)) throw new Error('Schedule must fit configured cron wakeups');
   const local=new Date(now.getTime()+330*60000), day=local.toISOString().slice(0,10);
   const hours=[]; for(let h=s.startHour;h<=s.endHour;h+=s.intervalHours) hours.push(h);
   if(s.dailyPosts>hours.length) throw new Error('dailyPosts exceeds available slots');

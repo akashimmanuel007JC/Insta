@@ -1,1 +1,25 @@
-[]
+[
+  {
+    "timestamp": "2026-10-14T15:59:53.297Z",
+    "story_id": "5c5071e769ff6f37fa74",
+    "category": "Tech",
+    "source": {
+      "name": "The Guardian",
+      "url": "https://www.theguardian.com/technology/2026/oct/14/uber-self-driving-robotaxi-trial-manchester"
+    },
+    "headline": "Uber begins self-driving robotaxi trial in Manchester",
+    "status": "published"
+  },
+  {
+    "timestamp": "2026-10-14T19:21:17.273Z",
+    "story_id": "4458c877a3c243f70a24",
+    "category": "World",
+    "source": {
+      "name": "The Guardian",
+      "url": "https://www.theguardian.com/world/live/2026/oct/14/russia-ukraine-war-latest-updates-zelenskyy-europe"
+    },
+    "headline": "EU says ‘no indication’ intelligence sharing with Ukraine has stopped as Russian attacks leave 600,000 without power – as it happened",
+    "status": "published",
+    "ig_media_id": "18099225353452547"
+  }
+]

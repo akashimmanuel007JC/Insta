@@ -1,3 +1,129 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>Daily Context — Observatory</title><link rel="stylesheet" href="dashboard.css"><script src="dashboard.js" defer></script></head>
-<body><div class="shell"><header><a class="wordmark" href="./">DAILY CONTEXT<span>THE AUTOMATED NEWS DESK</span></a><span class="readonly"><i></i> READ ONLY</span></header><main><section class="intro"><div><p class="eyebrow">PERFORMANCE / OBSERVATORY</p><h1>A little context.<br>A clearer picture.</h1><p class="lede">Follow the stories, find the patterns, understand what travels.</p></div><aside><span class="eyebrow">THE OBSERVATORY</span><p>One carousel at a time.<br>Every result in perspective.</p><span class="muted">All times in India Standard Time</span></aside></section><div class="toolbar"><p id="sync" role="status" aria-live="polite">Reading the post log…</p><label for="category">Category <select id="category" disabled><option value="">All categories</option></select></label></div><section id="notice" class="notice" hidden aria-live="polite"></section><section class="metrics" aria-label="Performance totals"><article><h2>Published posts</h2><p id="published">—</p><small id="coverage">Waiting for the log</small></article><article><h2>Reach</h2><p id="reach">—</p><small>Sum of measured post reach¹</small></article><article><h2>Saves</h2><p id="saves">—</p><small id="saves-count">No measurements yet</small></article><article><h2>Shares</h2><p id="shares">—</p><small id="shares-count">No measurements yet</small></article></section><div class="analysis"><section><div class="section-title"><span class="number">01</span><h2>Category performance</h2></div><p class="section-note">Ranked by average reach. Sample size matters.</p><div class="table-wrap"><table><caption class="sr-only">Category performance ranked by average reach</caption><thead><tr><th>Category</th><th>Measured / published</th><th>Avg. reach</th><th>Avg. saves + shares</th></tr></thead><tbody id="categories"></tbody></table></div></section><section><div class="section-title"><span class="number">02</span><h2>Best time slots</h2></div><p class="section-note">IST · average reach, then saves + shares as a tie-breaker.</p><div class="table-wrap"><table><caption class="sr-only">IST time slot performance</caption><thead><tr><th>Slot</th><th>Measured / published</th><th>Avg. reach</th><th>Avg. saves + shares</th></tr></thead><tbody id="slots"></tbody></table></div></section></div><section class="journal"><div class="section-title"><span class="number">03</span><h2>The post log</h2><span id="record-count" class="muted"></span></div><p class="section-note">Latest activity first. Pending insights are shown as a dash, never a zero.</p><div class="table-wrap"><table class="log-table"><caption class="sr-only">Post history and outcomes</caption><thead><tr><th>Published / attempted · IST</th><th>Story / source</th><th>Category</th><th>Status</th><th>Reach</th><th>Saves</th><th>Shares</th></tr></thead><tbody id="posts"></tbody></table></div></section><footer><p>¹ Reach is summed across posts; people may be counted more than once.<br>Insights are collected for published posts aged 24–48 hours. Comparisons are descriptive, not causal.</p><p>DAILY CONTEXT<br><span>Independent stories. Measured thoughtfully.</span></p></footer></main></div></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>News Studio — @info_crasher</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Top Header -->
+    <header class="app-header">
+      <div class="brand-group">
+        <div class="logo-orb"></div>
+        <div>
+          <span class="brand-title">NEWS CAROUSEL STUDIO</span>
+          <span class="brand-subtitle">Automated & Manual Instagram Publishing</span>
+        </div>
+      </div>
+      <div class="account-badge">
+        <span class="live-dot"></span>
+        <span id="account-name">@info_crasher</span>
+        <span class="schedule-pill">Auto: Every 3 Hrs</span>
+      </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="main-container">
+      <!-- Status Banner (Displays when a post is generating) -->
+      <div id="live-progress-banner" class="progress-banner" style="display: none;">
+        <div class="progress-info">
+          <div class="spinner"></div>
+          <div>
+            <h4 id="progress-title">Publishing Story to Instagram...</h4>
+            <p id="progress-stage">Initializing...</p>
+          </div>
+        </div>
+        <div class="progress-bar-container">
+          <div id="progress-fill" class="progress-fill" style="width: 10%;"></div>
+        </div>
+      </div>
+
+      <!-- Studio Layout: Main Stream + Breaking News Column -->
+      <div class="studio-columns">
+        <!-- Left: Main Stream with Category Pills & Pagination -->
+        <div class="stream-column">
+          <!-- Category Filter Pills -->
+          <section class="filter-section">
+            <div class="section-header">
+              <h2>News Explorer</h2>
+              <span class="section-desc">Browse stories by topic and publish single-image posts</span>
+            </div>
+            <div class="category-pills" id="category-pills">
+              <!-- Populated by JS -->
+            </div>
+          </section>
+
+          <!-- News Cards Grid -->
+          <section class="news-grid-section">
+            <div id="loading-indicator" class="loader-wrap">
+              <div class="spinner large"></div>
+              <p>Fetching freshest stories...</p>
+            </div>
+            <div id="news-grid" class="news-grid" style="display: none;">
+              <!-- Populated by JS -->
+            </div>
+          </section>
+
+          <!-- Pagination Bar -->
+          <div class="pagination-bar" id="pagination-bar" style="display: none;">
+            <button id="prev-btn" class="page-btn">← Previous</button>
+            <span id="page-indicator" class="page-indicator">Page 1 of 5</span>
+            <button id="next-btn" class="page-btn">Next →</button>
+          </div>
+        </div>
+
+        <!-- Right: Dedicated Breaking News Column -->
+        <aside class="breaking-column">
+          <div class="breaking-header">
+            <div class="breaking-badge">
+              <span class="pulse-red"></span>
+              <span>TOP BREAKING NEWS</span>
+            </div>
+            <span class="breaking-sub">Crucial updates across World, Tech & Business</span>
+          </div>
+
+          <div id="breaking-loader" class="loader-wrap" style="padding: 24px 0;">
+            <div class="spinner"></div>
+            <p style="font-size: 0.85rem; margin-top: 8px;">Monitoring breaking feeds...</p>
+          </div>
+
+          <div id="breaking-list" class="breaking-list" style="display: none;">
+            <!-- Populated by JS -->
+          </div>
+        </aside>
+      </div>
+
+      <!-- History Section -->
+      <section class="history-section">
+        <div class="section-header">
+          <h2>Published Posts & Activity Log</h2>
+          <span class="section-desc">Track automated 3-hour posts and manual triggers</span>
+        </div>
+        <div class="table-wrap">
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th>Date & Time</th>
+                <th>Category</th>
+                <th>Headline</th>
+                <th>Source</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="history-tbody">
+              <tr><td colspan="5" style="text-align:center; padding: 20px; color: var(--text-muted);">No activity recorded yet</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>

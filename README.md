@@ -1,3 +1,5 @@
+> Posting format: each story now generates one JPEG and publishes one photo post with a caption and hashtags. Older carousel descriptions below refer to the previous format. Music is not included.
+
 # Daily Context — automated Instagram carousels
 
 A Node.js 20 pipeline running entirely on GitHub Actions. It selects a category, gathers sources, deduplicates, ranks candidates, writes grounded copy, generates original illustrations, renders JPEG slides, deploys GitHub Pages, publishes one carousel, and collects next-day insights. The dashboard only reads `logs/posts.json`. No laptop or server is required after setup.
@@ -158,3 +160,25 @@ Open `http://localhost:8000`. An empty repository correctly shows an empty state
 - [Wikimedia APIs](https://www.mediawiki.org/wiki/Wikimedia_APIs)
 - [World Bank API queries](https://datahelpdesk.worldbank.org/knowledgebase/articles/898581-api-basic-call-structures)
 - [GitHub Pages custom workflows](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)
+
+## Local Azure configuration
+
+The project now supports `llm.provider` and `image.provider` set to `azure` or `openai` independently. Your local Azure settings are loaded from ignored `.env` only when running:
+
+```sh
+npm run local
+```
+
+Requires Node 20.9+ and always runs privately: real API calls, local JPEGs, no hosting or Instagram publishing. The command validates provider settings before spending on generation. Set these in `.env`:
+
+- `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_VERSION`
+- `AZURE_OPENAI_DEPLOYMENT`: optional override; defaults to `llm.model` in `config.json`
+- `AZURE_OPENAI_IMAGE_API_KEY_1`, `AZURE_OPENAI_IMAGE_ENDPOINT_1`, `AZURE_OPENAI_IMAGE_API_VERSION_1`
+- `AZURE_OPENAI_IMAGE_DEPLOYMENT`: optional override; defaults to `image.model` in `config.json` (the image adapter requires GPT Image-compatible parameters and base64 output)
+- `GUARDIAN_KEY`: your news-source key; optional GNews/NASA keys may also be added
+
+Separate deployment environment variables are optional. The configured model names are used in Azure request routes unless overridden; they must match deployments available in the resource. Image and text resources may use separate keys. Use ASCII `API` in environment variable names.
+
+The supplied text API version uses `llm.responseFormat: "json_object"`; the schema is supplied in the prompt and local validation still enforces script structure. For a deployment/API version supporting strict structured outputs, use `"json_schema"`. Azure model availability and permissions must be verified in your account. See [Microsoft's JSON mode documentation](https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/json-mode).
+
+For GitHub Actions with Azure enabled, add the same Azure variables as repository Actions secrets; `.env` is never committed or loaded in cloud jobs. `npm run dry-run` remains an offline mock test.

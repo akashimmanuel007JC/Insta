@@ -14,7 +14,25 @@ export async function request(url, options={}, {attempts=3, fetchImpl=fetch, wai
   for (let i=0;i<attempts;i++) {
     try {
       const r=await fetchImpl(url,{...options,signal:AbortSignal.timeout(timeoutMs)});
-      if (!r.ok) { const e=new Error(`HTTP ${r.status} from ${new URL(url).hostname}`); e.retryable=r.status===429||r.status>=500; throw e; }
+      if (!r.ok) {
+        let code, graphDetail='';
+        try {
+          const body=await r.json(); const value=body.error?.code;
+          if(typeof value==='string' && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(value)) code=value;
+          if(['graph.instagram.com','graph.facebook.com'].includes(new URL(url).hostname)) {
+            if(Number.isInteger(value)) code=value;
+            const subcode=body.error?.error_subcode;
+            const message=[body.error?.message,body.error?.error_user_msg].filter(v=>typeof v==='string').join(' ');
+            let detail=message;
+            const bearer=options.headers?.Authorization?.replace(/^Bearer\s+/i,'');
+            if(bearer) detail=detail.replaceAll(bearer,'[REDACTED]');
+            graphDetail=`${Number.isInteger(subcode)?` Subcode ${subcode}.`:''}${detail?` ${safeError(new Error(detail))}`:''}`;
+          }
+        } catch {}
+        const hint=code==='DeploymentNotFound' ? ' Check that the configured model/deployment name exists in this Azure resource.' : '';
+        const e=new Error(`HTTP ${r.status} from ${new URL(url).hostname}${code !== undefined ? ` (${code})` : ''}.${hint}${graphDetail}`);
+        e.retryable=r.status===429||r.status>=500; throw e;
+      }
       return await r.json();
     } catch(e) { if (i===attempts-1 || e.retryable===false) throw e; await wait(1000*2**i); }
   }
