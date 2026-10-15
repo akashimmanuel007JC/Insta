@@ -31,6 +31,29 @@ public/                      Static dashboard and retained JPEGs
 output/                      Ignored private local results / short-lived artifacts
 ```
 
+## Private Studio login and hosting
+
+The interactive Studio (`npm run studio`) is protected by a signed, HttpOnly login cookie. The username is fixed as `akashimmanuel`; the password is deliberately not stored in source code. Before starting locally, add these values to your ignored `.env`:
+
+```env
+ADMIN_PASSWORD=choose-your-private-password
+AUTH_SECRET=paste-a-long-random-secret-here
+```
+
+Generate a suitable signing secret with `openssl rand -base64 48`. Keep both values private and set the same environment variables in the hosting platform. The server refuses to start if either value is missing or if `AUTH_SECRET` is shorter than 32 characters.
+
+```sh
+npm run studio
+```
+
+Open `http://localhost:3000`; unauthenticated Studio pages and APIs redirect to the login screen. `/health` and generated JPEG files below `/output/` remain public so a cloud health check and Instagram image fetch can work. All other Studio assets and APIs require the signed session. Use the **Sign out** control to clear it.
+
+The session cookie requests the practical browser maximum of 400 days and is renewed during authenticated use. Browsers, privacy settings, manual data clearing, and platform policies can still remove it, so no web login can guarantee a literally non-expiring cookie. HTTPS deployments receive the `Secure` cookie flag automatically, including behind a proxy that sends `X-Forwarded-Proto: https`.
+
+To host the Studio on a Node platform such as Render, create a Web Service with build command `npm ci`, start command `node server.js`, and health-check path `/health`. Add `ADMIN_PASSWORD`, `AUTH_SECRET`, the AI/news/Instagram credentials, and set `PUBLIC_URL` to the service's public HTTPS origin. (`npm run studio` is the local command because it loads the ignored `.env`; cloud platforms inject environment variables directly.) The Studio's in-memory login rate limit resets when the service restarts, and free hosts may sleep or discard local files; GitHub Actions remains the durable unattended scheduler.
+
+This login protects only the live Node Studio. The separate GitHub Pages output is intentionally public and contains only the dashboard allowlist, post history, and images assembled by `scripts/build-pages.js`; do not treat Pages as a private authenticated application.
+
 ## 1. Verify privately first
 
 ```sh

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Secure access — News Carousel Studio</title>
+  <style>
+    :root { color-scheme: dark; --ink:#090d12; --panel:#111821; --line:#2b3540; --paper:#f2eadb; --muted:#9aa6b2; --amber:#e5a955; --coral:#ef735d; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; display:grid; place-items:center; padding:24px; background:var(--ink); color:var(--paper); font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    body::before { content:""; position:fixed; inset:0; pointer-events:none; opacity:.18; background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px); background-size:32px 32px; mask-image:linear-gradient(to bottom,black,transparent 80%); }
+    main { position:relative; width:min(100%, 430px); }
+    .masthead { display:flex; align-items:center; gap:12px; margin-bottom:22px; color:var(--muted); font-size:.72rem; font-weight:700; letter-spacing:.15em; text-transform:uppercase; }
+    .mark { width:30px; height:30px; border:1px solid var(--amber); display:grid; place-items:center; transform:rotate(45deg); }
+    .mark::after { content:""; width:8px; height:8px; background:var(--amber); }
+    .panel { border:1px solid var(--line); border-top:3px solid var(--amber); background:var(--panel); padding:clamp(26px,7vw,42px); box-shadow:0 28px 80px rgba(0,0,0,.42); }
+    .secure { display:inline-flex; align-items:center; gap:8px; color:var(--amber); font-size:.7rem; font-weight:800; letter-spacing:.13em; text-transform:uppercase; }
+    .secure::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--amber); box-shadow:0 0 0 4px rgba(229,169,85,.12); }
+    h1 { margin:18px 0 10px; font-family:Georgia,"Times New Roman",serif; font-size:clamp(2rem,9vw,3.2rem); font-weight:500; line-height:.98; letter-spacing:-.035em; }
+    .intro { margin:0 0 30px; color:var(--muted); line-height:1.6; font-size:.94rem; }
+    label { display:block; margin:18px 0 8px; color:#d9dee3; font-size:.78rem; font-weight:700; letter-spacing:.05em; }
+    input { width:100%; min-height:48px; padding:12px 14px; border:1px solid var(--line); border-radius:3px; outline:none; background:#0c1219; color:var(--paper); font:inherit; transition:border-color .16s,box-shadow .16s; }
+    input:focus { border-color:var(--amber); box-shadow:0 0 0 3px rgba(229,169,85,.13); }
+    .password-wrap { position:relative; }
+    .password-wrap input { padding-right:72px; }
+    .reveal { position:absolute; right:6px; top:6px; height:36px; border:0; background:transparent; color:var(--muted); cursor:pointer; font-weight:700; }
+    .reveal:hover,.reveal:focus-visible { color:var(--paper); outline:1px solid var(--line); }
+    .submit { width:100%; min-height:50px; margin-top:24px; border:0; border-radius:3px; background:var(--paper); color:#15110b; font:inherit; font-weight:800; cursor:pointer; transition:transform .15s,background .15s; }
+    .submit:hover { background:#fff8eb; transform:translateY(-1px); }
+    .submit:disabled { cursor:wait; opacity:.65; transform:none; }
+    .error { min-height:22px; margin:13px 0 -4px; color:#ff9684; font-size:.83rem; line-height:1.4; }
+    .footnote { margin:20px 0 0; padding-top:18px; border-top:1px solid var(--line); color:#6f7c88; font-size:.72rem; line-height:1.5; }
+    @media (max-width:480px) { body { padding:16px; align-items:start; padding-top:10vh; } .panel { padding:26px 22px; } }
+    @media (prefers-reduced-motion:reduce) { * { transition:none!important; } }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="masthead"><span class="mark" aria-hidden="true"></span> News Carousel / Operations</div>
+    <section class="panel" aria-labelledby="login-title">
+      <div class="secure">Secured studio</div>
+      <h1 id="login-title">Private editorial access.</h1>
+      <p class="intro">Sign in to review stories, generate creative, and control publishing for @info_crasher.</p>
+      <form id="login-form">
+        <label for="username">Username</label>
+        <input id="username" name="username" autocomplete="username" value="akashimmanuel" required>
+        <label for="password">Password</label>
+        <div class="password-wrap">
+          <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+          <button class="reveal" id="reveal" type="button" aria-label="Show password">Show</button>
+        </div>
+        <p class="error" id="error" role="alert" aria-live="polite"></p>
+        <button class="submit" id="submit" type="submit">Enter studio</button>
+      </form>
+      <p class="footnote">Authorized operator access only. Sessions are signed and renewed while the Studio is in use.</p>
+    </section>
+  </main>
+  <script>
+    const form=document.getElementById('login-form'),password=document.getElementById('password'),reveal=document.getElementById('reveal'),submit=document.getElementById('submit'),error=document.getElementById('error');
+    reveal.addEventListener('click',()=>{const showing=password.type==='text';password.type=showing?'password':'text';reveal.textContent=showing?'Show':'Hide';reveal.setAttribute('aria-label',showing?'Show password':'Hide password');password.focus();});
+    form.addEventListener('submit',async event=>{event.preventDefault();error.textContent='';submit.disabled=true;submit.textContent='Verifying…';try{const response=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:form.username.value,password:password.value})});if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.error||'Unable to sign in.');}location.replace('/');}catch(err){error.textContent=err.message==='Invalid credentials.'?err.message:'Unable to sign in. Please try again.';password.select();}finally{submit.disabled=false;submit.textContent='Enter studio';}});
+  </script>
+</body>
+</html>

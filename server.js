@@ -1,8 +1,10 @@
 import http from 'node:http';
 import {generateBio, generateProfilePicture, profilePrompt} from './src/profile.js';
 import { readFile, rm } from 'node:fs/promises';
-import { existsSync, createReadStream } from 'node:fs';
+import { createReadStream, statSync } from 'node:fs';
 import { extname, join, basename } from 'node:path';
+import { resolve, sep } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { readJSON, writeJSON, safeError } from './src/util.js';
 import { fetchCandidates } from './src/sources/index.js';
 import { script } from './src/script.js';
@@ -11,6 +13,10 @@ import { compose } from './src/compose.js';
 import { publish, graph } from './src/publish.js';
 import { loadLogs, saveLogs, storyId } from './src/log.js';
 import { getSlot, scheduleOverview } from './src/schedule.js';
+import {
+  ADMIN_USERNAME, COOKIE_NAME, clearSessionCookie, constantTimeEqual, createRateLimiter,
+  createSessionToken, isSameOrigin, parseCookies, requestIsSecure, sessionCookie, verifySessionToken
+} from './src/auth.js';
 
 // ── Public URL resolution ──────────────────────────────────────────────────
 // Priority: PUBLIC_URL env var > ngrok auto-tunnel > null (log-only mode)
@@ -50,6 +56,40 @@ const MIME = {
 
 let activePublishJob = null;
 const submittedStories = new Set(await readJSON('logs/studio-submitted.json', []));
+
+function json(res, status, body, headers = {}) {
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers });
+  res.end(JSON.stringify(body));
+}
+
+async function readRequestJson(req, limit = 16_000) {
+  let body = '';
+  for await (const chunk of req) {
+    body += chunk;
+    if (Buffer.byteLength(body) > limit) throw Object.assign(new Error('Request body is too large.'), { statusCode: 413 });
+  }
+  try { return JSON.parse(body || '{}'); }
+  catch { throw Object.assign(new Error('Invalid JSON request.'), { statusCode: 400 }); }
+}
+
+function clientIp(req) {
+  return String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim();
+}
+
+function isFile(path) {
+  try { return statSync(path).isFile(); }
+  catch { return false; }
+}
+
+function sendFile(res, path, headers) {
+  const stream = createReadStream(path);
+  stream.once('error', () => {
+    if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Unable to read file');
+  });
+  res.writeHead(200, headers);
+  stream.pipe(res);
+}
 
 async function handleApi(req, res, url) {
   const config = await readJSON('config.json');
@@ -320,32 +360,116 @@ async function handleApi(req, res, url) {
   res.end(JSON.stringify({ error: 'Endpoint not found' }));
 }
 
-const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
+export function createStudioServer({ adminPassword = process.env.ADMIN_PASSWORD, authSecret = process.env.AUTH_SECRET } = {}) {
+  if (!adminPassword) throw new Error('Studio configuration error: ADMIN_PASSWORD is required.');
+  if (!authSecret || Buffer.byteLength(authSecret) < 32) throw new Error('Studio configuration error: AUTH_SECRET is required and must be at least 32 characters.');
+  const limiter = createRateLimiter();
+  const globalLimiter = createRateLimiter();
 
-  if (url.pathname.startsWith('/api/')) {
-    return handleApi(req, res, url);
-  }
+  return http.createServer(async (req, res) => {
+    let url;
+    try { url = new URL(req.url, `http://${req.headers.host || 'localhost'}`); }
+    catch { return json(res, 400, { error: 'Invalid request URL.' }); }
+    const secure = requestIsSecure(req);
 
-  // Serve static files from public/ or output/
-  let filePath = join(process.cwd(), 'public', url.pathname === '/' ? 'index.html' : url.pathname);
-  if (url.pathname.startsWith('/output/')) {
-    filePath = join(process.cwd(), url.pathname);
-  }
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'same-origin');
+    res.setHeader('X-Frame-Options', 'DENY');
 
-  if (existsSync(filePath)) {
-    const ext = extname(filePath).toLowerCase();
-    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
-    createReadStream(filePath).pipe(res);
-  } else {
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    if (req.method === 'GET' && url.pathname === '/health') {
+      return json(res, 200, { status: 'ok' });
+    }
+
+    if (req.method === 'GET' && url.pathname === '/login') {
+      if (verifySessionToken(parseCookies(req.headers.cookie)[COOKIE_NAME], authSecret)) {
+        res.writeHead(302, { Location: '/' });
+        return res.end();
+      }
+      const loginPath = join(process.cwd(), 'public', 'login.html');
+      return sendFile(res, loginPath, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-store' });
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/auth/login') {
+      if (!isSameOrigin(req)) return json(res, 403, { error: 'Request origin is not allowed.' });
+      const ip = clientIp(req);
+      const status = limiter.check(ip);
+      const globalStatus = globalLimiter.check('all');
+      if (!status.allowed || !globalStatus.allowed) {
+        return json(res, 429, { error: 'Too many sign-in attempts. Try again later.' }, { 'Retry-After': String(Math.max(status.retryAfter, globalStatus.retryAfter)) });
+      }
+      try {
+        const credentials = await readRequestJson(req, 4_096);
+        const valid = constantTimeEqual(credentials.username || '', ADMIN_USERNAME) && constantTimeEqual(credentials.password || '', adminPassword);
+        if (!valid) {
+          limiter.fail(ip);
+          globalLimiter.fail('all');
+          return json(res, 401, { error: 'Invalid credentials.' });
+        }
+        limiter.clear(ip);
+        globalLimiter.clear('all');
+        return json(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(createSessionToken(authSecret), secure) });
+      } catch (error) {
+        return json(res, error.statusCode || 400, { error: error.message });
+      }
+    }
+
+    const session = parseCookies(req.headers.cookie)[COOKIE_NAME];
+    const authenticated = verifySessionToken(session, authSecret);
+
+    if (req.method === 'GET' && url.pathname.startsWith('/output/')) {
+      const outputRoot = resolve(process.cwd(), 'output');
+      const requested = resolve(outputRoot, `.${url.pathname.slice('/output'.length)}`);
+      if (!requested.startsWith(`${outputRoot}${sep}`) || !/\.jpe?g$/i.test(requested) || !isFile(requested)) {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        return res.end('Not Found');
+      }
+      return sendFile(res, requested, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=3600' });
+    }
+
+    if (!authenticated) {
+      if (url.pathname.startsWith('/api/')) return json(res, 401, { error: 'Authentication required.' });
+      res.writeHead(302, { Location: '/login', 'Cache-Control': 'no-store' });
+      return res.end();
+    }
+
+    // Sliding renewal: authenticated use receives a fresh signed 400-day cookie.
+    res.setHeader('Set-Cookie', sessionCookie(createSessionToken(authSecret), secure));
+
+    if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
+      if (!isSameOrigin(req)) return json(res, 403, { error: 'Request origin is not allowed.' });
+      return json(res, 200, { ok: true }, { 'Set-Cookie': clearSessionCookie(secure) });
+    }
+
+    if (req.method !== 'GET' && req.method !== 'HEAD' && url.pathname.startsWith('/api/') && !isSameOrigin(req)) {
+      return json(res, 403, { error: 'Request origin is not allowed.' });
+    }
+
+    if (url.pathname.startsWith('/api/')) return handleApi(req, res, url);
+
+    const publicRoot = resolve(process.cwd(), 'public');
+    const relativePath = url.pathname === '/' ? 'index.html' : `.${url.pathname}`;
+    const filePath = resolve(publicRoot, relativePath);
+
+    if (filePath.startsWith(`${publicRoot}${sep}`) && isFile(filePath)) {
+      const ext = extname(filePath).toLowerCase();
+      return sendFile(res, filePath, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': 'no-store' });
+    }
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end('Not Found');
-  }
-});
+  });
+}
 
-server.listen(PORT, () => {
-  console.log(`\n======================================================`);
-  console.log(`🚀 News Carousel Studio running at http://localhost:${PORT}`);
-  console.log(`✨ Connected Instagram Account: @info_crasher`);
-  console.log(`======================================================\n`);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  let server;
+  try { server = createStudioServer(); }
+  catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
+  }
+  server?.listen(PORT, () => {
+    console.log(`\n======================================================`);
+    console.log(`🚀 News Carousel Studio running at http://localhost:${PORT}`);
+    console.log(`🔒 Private operator access enabled`);
+    console.log(`======================================================\n`);
+  });
+}

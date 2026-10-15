@@ -6,11 +6,24 @@ let newsItems = [];
 let breakingItems = [];
 
 async function init() {
+  document.getElementById('logout-button')?.addEventListener('click', logout);
   await loadConfig();
   await loadBreaking();
   await loadNews();
   await loadHistory();
   pollJobStatus();
+}
+
+async function logout() {
+  const button = document.getElementById('logout-button');
+  if (button) { button.disabled = true; button.textContent = 'Signing out…'; }
+  try {
+    const response = await fetch('/api/auth/logout', { method: 'POST' });
+    if (!response.ok) throw new Error('Sign out failed');
+    location.replace('/login');
+  } catch {
+    if (button) { button.disabled = false; button.textContent = 'Try sign out again'; }
+  }
 }
 
 async function loadBreaking() {
