@@ -2,7 +2,7 @@
 
 # Daily Context — automated Instagram carousels
 
-A Node.js 20 pipeline running entirely on GitHub Actions. It selects a category, gathers sources, deduplicates, ranks candidates, writes grounded copy, generates original illustrations, renders JPEG slides, deploys GitHub Pages, publishes one carousel, and collects next-day insights. The dashboard only reads `logs/posts.json`. No laptop or server is required after setup.
+A Node.js 20 pipeline running entirely on GitHub Actions. At every posting slot it gathers stories from every category, deduplicates them, selects the highest-intensity candidate, writes grounded copy, generates an original illustration, deploys it through GitHub Pages, publishes one photo post, and collects next-day insights. The dashboard only reads `logs/posts.json`. No laptop or server is required after setup.
 
 **Local verification uses simulated content and images. Live posting requires your accounts, credentials and GitHub Pages configuration.** The sole npm dependency is `sharp`; tests, schema validation, HTTP and orchestration use Node built-ins.
 
@@ -133,7 +133,7 @@ Edit `categories` and the corresponding `sources` map. Every category must have 
 
 NASA uses APOD explanations, never its images. Wikipedia uses the current news feed and category keyword filtering. World Bank supplies explicitly dated **historical annual facts**, not breaking news; scripts must retain that context. Publisher image URLs are neither stored nor fetched. Article text is transient input and is not committed or copied into captions.
 
-Ranking is one LLM call with validated scores. Script generation is one structured-output call plus at most one correction call. Local schema validation checks exact keys, roles, source metadata, word limits, hashtags, caption disclosure, unsupported numeric strings and long verbatim passages. These checks reduce errors but cannot prove every paraphrased claim true. The prompt forbids outside facts and treats articles as untrusted input. Always evaluate initial dry-run quality before enabling unattended publication.
+Automatic selection does not use an LLM. It assigns each eligible story a deterministic 0–100 intensity score based on freshness, corroboration by independent sources, restrained urgency signals, and measurable impact. Freshness and corroboration carry most of the weight so sensational wording alone cannot dominate. Script generation is one structured-output LLM call plus at most one correction call. Local schema validation checks exact keys, roles, source metadata, word limits, hashtags, caption disclosure, unsupported numeric strings and long verbatim passages. These checks reduce errors but cannot prove every paraphrased claim true. The prompt forbids outside facts and treats articles as untrusted input. Always evaluate initial dry-run quality before enabling unattended publication.
 
 The requested 5–7 total slides and 2–4 story slides conflict at seven slides (hook + five stories + CTA). This implementation emits **5–6 slides**: hook, 3–4 story slides, CTA, satisfying both ranges. Headlines are capped at 10 words on every slide. Images are conceptual paper-cut illustrations with no text, people or realistic event reenactment. Sharp adds the actual text, watermark and disclosure on 1080×1350 JPEGs. Prompts cannot mathematically guarantee image-model compliance; inspect initial results.
 

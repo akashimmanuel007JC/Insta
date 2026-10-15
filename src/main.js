@@ -4,7 +4,7 @@ import {readJSON,writeJSON,safeError,required} from './util.js';
 import {getSlot} from './schedule.js';
 import {fetchCandidates} from './sources/index.js';
 import {loadLogs,saveLogs,dedupe,locked,storyId} from './log.js';
-import {select} from './select.js';
+import {selectByIntensity} from './intensity.js';
 import {script,validateScript} from './script.js';
 import {images} from './images.js';
 import {compose} from './compose.js';
@@ -19,14 +19,28 @@ export async function prepare({config,now=new Date(),dry=process.env.DRY_RUN==='
  const slot=getSlot(config,now,process.env.SLOT_HOUR||(dry?String(config.schedule.startHour):undefined));if(!slot)return {status:'skipped',reason:'Inactive slot'};
  if(locked(logs,slot))return {status:'skipped',reason:'Slot already reserved'};
  if(logs.posts.filter(p=>p.slot?.startsWith(slot.day)&&['posting','uncertain','published'].includes(p.status)).length>=config.schedule.dailyPosts)return {status:'skipped',reason:'Daily limit reached'};
- record={timestamp:now.toISOString(),slot:slot.id,category:slot.category,status:'preparing',error:null,ig_media_id:null};logs.posts.push(record);
- let candidates,warnings=[];if(mock){const m=await import('./mock.js');candidates=[m.candidate];}else({candidates,warnings}=await (services.fetchCandidates||fetchCandidates)(slot.category,config,{now}));
+ record={timestamp:now.toISOString(),slot:slot.id,category:null,status:'preparing',error:null,ig_media_id:null};logs.posts.push(record);
+ let candidates,warnings=[];
+ if(mock){const m=await import('./mock.js');candidates=[{...m.candidate,category:config.categories[0]}];}
+ else {
+  const fetch=services.fetchCandidates||fetchCandidates;
+  for(const category of config.categories) {
+   try {
+    const result=await fetch(category,config,{now});
+    candidates.push(...result.candidates.map(candidate=>({...candidate,category})));
+    warnings.push(...result.warnings.map(warning=>`${category}: ${warning}`));
+   } catch(e) { warnings.push(`${category}: ${safeError(e)}`); }
+  }
+  if(!candidates.length)throw new Error(`No sufficiently sourced candidates across all categories. ${warnings.join('; ')}`);
+ }
  record.warnings=warnings;
+ const pool=candidates;
  candidates=dedupe(candidates,logs.used,config,now).filter(c=>!locked(logs,slot,c));if(!candidates.length)throw new Error('No unused candidates');
- const chosen=mock?candidates[0]:await (services.select||select)(candidates,config);
- Object.assign(record,{story_id:storyId(chosen),source:{name:chosen.source,url:chosen.url},headline:chosen.title});
+ const chosen=mock?{...candidates[0],intensity:{score:0,label:'test',independentSources:1,components:{}}}:selectByIntensity(candidates,pool,config,now);
+ const category=chosen.category;
+ Object.assign(record,{category,story_id:storyId(chosen),source:{name:chosen.source,url:chosen.url},headline:chosen.title,intensity:chosen.intensity});
  const m=mock?await import('./mock.js'):null;
- const copy=mock?validateScript(m.mockScript(slot.category),chosen,slot.category):await (services.script||script)(chosen,slot.category,config);
+ const copy=mock?validateScript(m.mockScript(category),chosen,category):await (services.script||script)(chosen,category,config);
  const buffers=mock?await m.mockImages(copy):await (services.images||images)(copy,config);
  const paths=await compose(buffers,copy,config,`output/${record.story_id}`);
  if(dry){record.status='dry_run';await saveLogs(logs,logRoot);const result={status:'dry_run',slot,script:copy,paths};await writeJSON('output/result.json',result);return result;}

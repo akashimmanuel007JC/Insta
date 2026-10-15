@@ -15,10 +15,11 @@ import {request} from '../src/util.js';
 import {collectInsights} from '../src/insights.js';
 import {fetchCandidates} from '../src/sources/index.js';
 import {select} from '../src/select.js';
+import {intensityScore,selectByIntensity} from '../src/intensity.js';
 const config=JSON.parse(await readFile(new URL('../config.json',import.meta.url)));
 config.llm.provider='openai';config.llm.responseFormat='json_schema';config.image.provider='openai';
-test('slots daily, category and omitted slots rotate according to schedule',()=>{
- const atSeven=new Set(),skipped=new Set();for(let d=1;d<=56;d++){let count=0;for(let h=config.schedule.startHour;h<=config.schedule.endHour;h+=config.schedule.intervalHours){const now=new Date(Date.UTC(2026,0,d,h-6,30));const slot=getSlot(config,now);if(slot){count++;if(h===7)atSeven.add(slot.category);}else skipped.add(h);}assert.equal(count,config.schedule.dailyPosts);}assert.equal(atSeven.size,config.categories.length);
+test('slots run across all categories and omitted times rotate daily',()=>{
+ const skipped=new Set();for(let d=1;d<=56;d++){let count=0;for(let h=config.schedule.startHour;h<=config.schedule.endHour;h+=config.schedule.intervalHours){const now=new Date(Date.UTC(2026,0,d,h-6,30));const slot=getSlot(config,now);if(slot){count++;assert.equal(slot.category,'All categories');}else skipped.add(h);}assert.equal(count,config.schedule.dailyPosts);}assert.ok(skipped.size>1);
  assert.equal(getSlot(config,new Date('2026-01-01T18:00:00Z')),null);
 });
 test('canonical URLs, similar titles and 30-day expiry',()=>{
@@ -43,6 +44,16 @@ test('transient requests retry; auth errors do not',async()=>{let n=0;await requ
 test('insights only sample published posts aged 24 to 48h',async()=>{const now=new Date('2026-10-13T12:00Z');const posts=[25,10,49].map((h,i)=>({timestamp:new Date(now-h*3600000).toISOString(),status:'published',ig_media_id:String(i)}));let calls=0;const errors=await collectInsights(posts,async()=>{calls++;return {data:['reach','saved','shares','likes','comments'].map(name=>({name,values:[{value:5}]}))};},now);assert.equal(calls,1);assert.equal(posts[0].insights.saves,5);assert.equal(errors.length,0);});
 test('Guardian source uses article text and never publisher images',async()=>{const old=process.env.GUARDIAN_KEY;process.env.GUARDIAN_KEY='test';try{const cfg=structuredClone(config);cfg.sources.Space.providers=['guardian'];const {candidates}=await fetchCandidates('Space',cfg,{now:new Date('2026-10-13'),get:async()=>({response:{results:[{webTitle:candidate.title,webUrl:candidate.url,webPublicationDate:'2026-10-12',fields:{bodyText:candidate.text}}]}})});assert.equal(candidates[0].text,candidate.text);assert.equal(candidates[0].image,undefined);}finally{if(old===undefined)delete process.env.GUARDIAN_KEY;else process.env.GUARDIAN_KEY=old;}});
 test('ranking rejects missing or duplicate scores',async()=>{await assert.rejects(select([candidate,candidate],config,async()=>({scores:[{index:0,visual:8,surprise:8,shareability:8},{index:0,visual:9,surprise:9,shareability:9}]})));});
+test('intensity favors fresh independently corroborated urgent news',()=>{
+ const now=new Date('2026-10-15T12:00:00Z');
+ const routine={...candidate,title:'Museum announces a new autumn exhibition',url:'https://example.com/culture',source:'Source A',published:'2026-10-15T11:30:00Z',category:'Cinemas'};
+ const urgent={...candidate,title:'Major earthquake prompts nationwide emergency response',url:'https://example.com/quake-a',source:'Source A',published:'2026-10-15T11:00:00Z',category:'World'};
+ const corroborating={...urgent,url:'https://second.example/quake',source:'Source B',title:'Major earthquake prompts nationwide emergency response today'};
+ const urgentScore=intensityScore(urgent,[routine,urgent,corroborating],config,now);
+ assert.equal(urgentScore.independentSources,2);
+ assert.ok(urgentScore.score>intensityScore(routine,[routine,urgent,corroborating],config,now).score);
+ assert.equal(selectByIntensity([routine,urgent],[routine,urgent,corroborating],config,now).url,urgent.url);
+});
 test('offline end-to-end dry run is repeatable and never creates public or live state',async()=>{
  const {execFile}=await import('node:child_process');const {promisify}=await import('node:util');const {writeFile,readdir}=await import('node:fs/promises');
  const dir=await mkdtemp(join(tmpdir(),'carousel-e2e-'));try{await writeFile(join(dir,'config.json'),JSON.stringify(config));for(let i=0;i<2;i++)await promisify(execFile)(process.execPath,[new URL('../src/main.js',import.meta.url).pathname],{cwd:dir,env:{...process.env,DRY_RUN:'true',MOCK_APIS:'true'}});const result=JSON.parse(await readFile(join(dir,'output/result.json')));assert.equal(result.status,'dry_run');assert.equal(result.paths.length,1);assert.deepEqual((await readdir(dir)).sort(),['config.json','output']);}finally{await rm(dir,{recursive:true,force:true});}

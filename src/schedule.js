@@ -12,9 +12,7 @@ export function getSlot(config, now=new Date(), explicit) {
   const index=hours.indexOf(hour);
   // Rotate skipped slots daily, so six/day samples all eight times over time.
   if(explicit===undefined && ((index+dayIndex)%hours.length+hours.length)%hours.length>=s.dailyPosts) return null;
-  const category=config.categories[((dayIndex+Math.floor(dayIndex/hours.length)+index)%config.categories.length+config.categories.length)%config.categories.length];
-  if(!category||!config.sources[category]) throw new Error('Category/source configuration is incomplete');
-  return {id:`${day}T${String(hour).padStart(2,'0')}:00+05:30`,day,time:`${String(hour).padStart(2,'0')}:00`,category};
+  return {id:`${day}T${String(hour).padStart(2,'0')}:00+05:30`,day,time:`${String(hour).padStart(2,'0')}:00`,category:'All categories'};
 }
 
 // Use the same rotation rules as the publisher, without explicit-slot overrides.
@@ -29,7 +27,7 @@ export function scheduleOverview(config, posts=[], now=new Date()) {
    if(!slot)continue;
    const record=posts.filter(p=>p.slot===slot.id).at(-1);
    const states=['published','failed','posting','uncertain','preparing'];
-   slots.push({...slot,status:states.includes(record?.status)?record.status:(at>now?'upcoming':'elapsed')});
+   slots.push({...slot,category:record?.category||slot.category,status:states.includes(record?.status)?record.status:(at>now?'upcoming':'elapsed')});
   }
  }
  return {timezone:config.schedule.timezone,now:now.toISOString(),localDate,dailyPosts:config.schedule.dailyPosts,runner:'github_actions',localAutoPublishing:false,next:slots.find(s=>s.status==='upcoming')||null,slots};
