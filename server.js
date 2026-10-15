@@ -1,4 +1,5 @@
 import http from 'node:http';
+import {generateBio, generateProfilePicture, profilePrompt} from './src/profile.js';
 import { readFile, rm } from 'node:fs/promises';
 import { existsSync, createReadStream } from 'node:fs';
 import { extname, join, basename } from 'node:path';
@@ -9,7 +10,7 @@ import { images } from './src/images.js';
 import { compose } from './src/compose.js';
 import { publish, graph } from './src/publish.js';
 import { loadLogs, saveLogs, storyId } from './src/log.js';
-import { getSlot } from './src/schedule.js';
+import { getSlot, scheduleOverview } from './src/schedule.js';
 
 // ── Public URL resolution ──────────────────────────────────────────────────
 // Priority: PUBLIC_URL env var > ngrok auto-tunnel > null (log-only mode)
@@ -52,6 +53,45 @@ const submittedStories = new Set(await readJSON('logs/studio-submitted.json', []
 
 async function handleApi(req, res, url) {
   const config = await readJSON('config.json');
+
+  if (req.method === 'POST' && ['/api/profile/bio', '/api/profile/picture'].includes(url.pathname)) {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      let body = '';
+      for await (const chunk of req) {
+        body += chunk;
+        if (Buffer.byteLength(body) > 16000) {
+          res.writeHead(413, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Instructions are too large.' }));
+        }
+      }
+      let prompt;
+      try { prompt = profilePrompt(JSON.parse(body).prompt); }
+      catch (error) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: error instanceof SyntaxError ? 'Invalid JSON request.' : safeError(error) }));
+      }
+      const result = url.pathname.endsWith('/bio')
+        ? await generateBio(prompt, config)
+        : await generateProfilePicture(prompt, config);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify(result));
+    } catch (error) {
+      res.writeHead(502, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: safeError(error) }));
+    }
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/schedule') {
+    try {
+      const logs = await loadLogs('logs');
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      return res.end(JSON.stringify(scheduleOverview(config, logs.posts)));
+    } catch (error) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: safeError(error) }));
+    }
+  }
 
   if (req.method === 'GET' && url.pathname === '/api/config') {
     res.writeHead(200, { 'Content-Type': 'application/json' });

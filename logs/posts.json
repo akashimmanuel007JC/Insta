@@ -21,5 +21,41 @@
     "headline": "EU says ‘no indication’ intelligence sharing with Ukraine has stopped as Russian attacks leave 600,000 without power – as it happened",
     "status": "published",
     "ig_media_id": "18099225353452547"
+  },
+  {
+    "timestamp": "2026-10-14T19:37:41.611Z",
+    "story_id": "165047532696352a0358",
+    "category": "Tech",
+    "source": {
+      "name": "The Guardian",
+      "url": "https://www.theguardian.com/technology/2026/oct/14/could-ai-change-the-stakes-in-the-development-of-bioweapons"
+    },
+    "headline": "Could AI ‘change the stakes’ in the development of bioweapons?",
+    "status": "published",
+    "ig_media_id": "18436639867181216"
+  },
+  {
+    "timestamp": "2026-10-14T19:41:06.500Z",
+    "story_id": "487c6c4768038329acfb",
+    "category": "World",
+    "source": {
+      "name": "The Guardian",
+      "url": "https://www.theguardian.com/world/2026/oct/14/pope-leo-recovery-lung-cancer-surgery-progressing-as-planned"
+    },
+    "headline": "Pope Leo’s recovery from lung cancer surgery ‘progressing as planned’ ",
+    "status": "published",
+    "ig_media_id": "18346113055251372"
+  },
+  {
+    "timestamp": "2026-10-14T19:42:19.630Z",
+    "story_id": "ba2ad2321882e59b9af2",
+    "category": "Sports",
+    "source": {
+      "name": "The Guardian",
+      "url": "https://www.theguardian.com/sport/2026/oct/14/sport-fitness-prison-reduce-reoffending"
+    },
+    "headline": "‘Through the gate’: how sporting mentors can lead prisoners down a different path | Cath Bishop",
+    "status": "published",
+    "ig_media_id": "18092809178675381"
   }
 ]

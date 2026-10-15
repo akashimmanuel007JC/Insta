@@ -16,3 +16,21 @@ export function getSlot(config, now=new Date(), explicit) {
   if(!category||!config.sources[category]) throw new Error('Category/source configuration is incomplete');
   return {id:`${day}T${String(hour).padStart(2,'0')}:00+05:30`,day,time:`${String(hour).padStart(2,'0')}:00`,category};
 }
+
+// Use the same rotation rules as the publisher, without explicit-slot overrides.
+export function scheduleOverview(config, posts=[], now=new Date()) {
+ const localDate=new Date(now.getTime()+330*60000).toISOString().slice(0,10);
+ const midnight=Date.parse(`${localDate}T00:00:00+05:30`);
+ const slots=[];
+ for(let day=0;day<2;day++) {
+  for(let hour=config.schedule.startHour;hour<=config.schedule.endHour;hour+=config.schedule.intervalHours) {
+   const at=new Date(midnight+day*86400000+hour*3600000);
+   const slot=getSlot(config,at);
+   if(!slot)continue;
+   const record=posts.filter(p=>p.slot===slot.id).at(-1);
+   const states=['published','failed','posting','uncertain','preparing'];
+   slots.push({...slot,status:states.includes(record?.status)?record.status:(at>now?'upcoming':'elapsed')});
+  }
+ }
+ return {timezone:config.schedule.timezone,now:now.toISOString(),localDate,dailyPosts:config.schedule.dailyPosts,runner:'github_actions',localAutoPublishing:false,next:slots.find(s=>s.status==='upcoming')||null,slots};
+}

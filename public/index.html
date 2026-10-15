@@ -23,7 +23,7 @@
       <div class="account-badge">
         <span class="live-dot"></span>
         <span id="account-name">@info_crasher</span>
-        <span class="schedule-pill">Auto: Every 3 Hrs</span>
+        <span class="schedule-pill">Scheduled via GitHub Actions</span>
       </div>
     </header>
 
@@ -42,6 +42,15 @@
           <div id="progress-fill" class="progress-fill" style="width: 10%;"></div>
         </div>
       </div>
+
+      <section class="schedule-section" aria-labelledby="schedule-title">
+        <div class="section-header"><h2 id="schedule-title">Publishing schedule</h2><p class="section-desc">5 planned posts per day · India Standard Time (IST)</p></div>
+        <div class="schedule-monitor">
+          <div class="schedule-next"><span class="schedule-eyebrow">NEXT PLANNED POST</span><p id="schedule-next-detail">Loading schedule…</p><p id="schedule-countdown" class="schedule-countdown">—</p></div>
+          <div class="schedule-today"><h3 id="schedule-today-title">Today’s slots · IST</h3><ul id="schedule-slots" class="schedule-slots"></ul><p id="schedule-status" role="status" aria-live="polite">Loading planned times…</p></div>
+        </div>
+        <p class="schedule-note">Schedule runs through GitHub Actions. Local Studio does not auto-post. Times are planned; runner status is not verified.</p>
+      </section>
 
       <!-- Studio Layout: Main Stream + Breaking News Column -->
       <div class="studio-columns">
@@ -98,11 +107,53 @@
         </aside>
       </div>
 
+      <section class="profile-section" aria-labelledby="profile-title">
+        <div class="profile-heading">
+          <div class="section-header">
+            <h2 id="profile-title">Profile Studio</h2>
+            <p class="section-desc">Give your page a voice and a face.</p>
+          </div>
+          <a class="profile-edit-link" href="https://www.instagram.com/accounts/edit/" target="_blank" rel="noopener noreferrer">Edit profile on Instagram ↗</a>
+        </div>
+        <p class="profile-notice">Generate drafts here, then copy your bio or download your picture and apply it in Instagram. This does not update your account automatically.</p>
+        <div class="profile-grid">
+          <article class="profile-card">
+            <div class="profile-card-heading"><span class="profile-step">01</span><h3>Write your bio</h3></div>
+            <p class="profile-help">Tell us what your page covers, who it’s for, and how it should sound.</p>
+            <form id="profile-bio-form">
+              <label for="profile-bio-prompt">Your instructions</label>
+              <textarea id="profile-bio-prompt" rows="3" maxlength="2000" required placeholder="A curious, approachable news page. Explain the world simply, with a little wit. No emojis."></textarea>
+              <button class="profile-button" type="submit">Generate bio</button>
+            </form>
+            <div class="profile-output">
+              <div class="profile-label-row"><label for="profile-bio-result">Bio draft <span>· editable</span></label><span id="profile-bio-count">0 / 150</span></div>
+              <textarea id="profile-bio-result" rows="3" aria-describedby="profile-bio-count" placeholder="Your generated bio will appear here."></textarea>
+              <button id="profile-copy-bio" class="profile-button secondary" type="button" disabled>Copy bio</button>
+            </div>
+            <p id="profile-bio-status" class="profile-status" role="status" aria-live="polite"></p>
+          </article>
+          <article class="profile-card">
+            <div class="profile-card-heading"><span class="profile-step">02</span><h3>Create your picture</h3></div>
+            <p class="profile-help">Describe a subject, colors, and style. Simple designs read best at a small size.</p>
+            <form id="profile-picture-form">
+              <label for="profile-picture-prompt">Your instructions</label>
+              <textarea id="profile-picture-prompt" rows="3" maxlength="2000" required placeholder="A minimal globe icon in electric blue and white on a dark background. Bold, clean, no lettering."></textarea>
+              <button class="profile-button" type="submit">Generate picture</button>
+            </form>
+            <div class="profile-picture-output">
+              <div class="profile-avatar"><span id="profile-picture-empty">Your picture<br>preview</span><img id="profile-picture-result" alt="Generated profile picture, shown in a circular crop" hidden></div>
+              <div><p class="profile-help">Circular preview<br>Downloads as a square JPEG.</p><a id="profile-download-picture" class="profile-button secondary" download="instagram-profile.jpg" hidden>Download JPEG</a></div>
+            </div>
+            <p id="profile-picture-status" class="profile-status" role="status" aria-live="polite"></p>
+          </article>
+        </div>
+      </section>
+
       <!-- History Section -->
       <section class="history-section">
         <div class="section-header">
           <h2>Published Posts & Activity Log</h2>
-          <span class="section-desc">Track automated 3-hour posts and manual triggers</span>
+          <span class="section-desc">Track scheduled posts and manual triggers</span>
         </div>
         <div class="table-wrap">
           <table class="history-table">
@@ -125,5 +176,7 @@
   </div>
 
   <script src="dashboard.js"></script>
+  <script src="profile.js"></script>
+  <script src="schedule.js"></script>
 </body>
 </html>

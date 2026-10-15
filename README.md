@@ -182,3 +182,13 @@ Separate deployment environment variables are optional. The configured model nam
 The supplied text API version uses `llm.responseFormat: "json_object"`; the schema is supplied in the prompt and local validation still enforces script structure. For a deployment/API version supporting strict structured outputs, use `"json_schema"`. Azure model availability and permissions must be verified in your account. See [Microsoft's JSON mode documentation](https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/json-mode).
 
 For GitHub Actions with Azure enabled, add the same Azure variables as repository Actions secrets; `.env` is never committed or loaded in cloud jobs. `npm run dry-run` remains an offline mock test.
+
+### Profile Studio
+
+The Studio includes prompt-based bio and profile-picture generation using the configured text and image providers. Bios can be edited and copied (150 characters maximum); profile pictures are square JPEGs with a circular preview and download control. Generated results remain in the current browser page and are lost on refresh.
+
+These are drafts: this integration does not update your Instagram bio or profile picture. Use the Instagram profile link to paste the bio and upload the downloaded picture manually. Restart `npm run studio` after updating the code. No extra credentials beyond the existing AI provider configuration are needed.
+
+### Schedule monitor
+
+The Studio displays today's active posting slots and the next planned time/topic in IST, with a countdown. It uses the same rotating-slot logic as the publisher and reads outcomes from local logs. The local Studio does not execute scheduled posts: those run through GitHub Actions. Runner availability and remote outcomes are not verified by this display; an elapsed slot without a log entry means only that its planned time has passed. Refreshing the monitor does not trigger a post.

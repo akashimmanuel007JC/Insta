@@ -7,7 +7,8 @@
     "Space",
     "Health",
     "Sports",
-    "India"
+    "India",
+    "Cinemas"
   ],
   "schedule": {
     "timezone": "Asia/Kolkata",
@@ -90,6 +91,15 @@
       ],
       "query": "India",
       "guardianSection": "world"
+    },
+    "Cinemas": {
+      "providers": [
+        "guardian",
+        "gnews",
+        "wikipedia"
+      ],
+      "query": "film",
+      "guardianSection": "film"
     }
   },
   "candidateLimit": 30,

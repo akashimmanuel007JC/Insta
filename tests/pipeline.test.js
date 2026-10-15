@@ -18,7 +18,7 @@ import {select} from '../src/select.js';
 const config=JSON.parse(await readFile(new URL('../config.json',import.meta.url)));
 config.llm.provider='openai';config.llm.responseFormat='json_schema';config.image.provider='openai';
 test('slots daily, category and omitted slots rotate according to schedule',()=>{
- const atSeven=new Set(),skipped=new Set();for(let d=1;d<=56;d++){let count=0;for(let h=config.schedule.startHour;h<=config.schedule.endHour;h+=config.schedule.intervalHours){const now=new Date(Date.UTC(2026,0,d,h-6,30));const slot=getSlot(config,now);if(slot){count++;if(h===7)atSeven.add(slot.category);}else skipped.add(h);}assert.equal(count,config.schedule.dailyPosts);}assert.equal(atSeven.size,8);
+ const atSeven=new Set(),skipped=new Set();for(let d=1;d<=56;d++){let count=0;for(let h=config.schedule.startHour;h<=config.schedule.endHour;h+=config.schedule.intervalHours){const now=new Date(Date.UTC(2026,0,d,h-6,30));const slot=getSlot(config,now);if(slot){count++;if(h===7)atSeven.add(slot.category);}else skipped.add(h);}assert.equal(count,config.schedule.dailyPosts);}assert.equal(atSeven.size,config.categories.length);
  assert.equal(getSlot(config,new Date('2026-01-01T18:00:00Z')),null);
 });
 test('canonical URLs, similar titles and 30-day expiry',()=>{
