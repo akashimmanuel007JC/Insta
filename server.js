@@ -11,8 +11,9 @@ import { script } from './src/script.js';
 import { images } from './src/images.js';
 import { compose } from './src/compose.js';
 import { publish, graph } from './src/publish.js';
-import { loadLogs, saveLogs, storyId } from './src/log.js';
+import { dedupe, loadLogs, locked, saveLogs, storyId } from './src/log.js';
 import { getSlot, scheduleOverview } from './src/schedule.js';
+import { selectByIntensity } from './src/intensity.js';
 import {
   ADMIN_USERNAME, COOKIE_NAME, clearSessionCookie, constantTimeEqual, createRateLimiter,
   createSessionToken, isSameOrigin, parseCookies, requestIsSecure, sessionCookie, verifySessionToken
@@ -56,6 +57,158 @@ const MIME = {
 
 let activePublishJob = null;
 const submittedStories = new Set(await readJSON('logs/studio-submitted.json', []));
+const attemptedAutomaticSlots = new Set();
+const automaticPublishingEnabled = process.env.AUTO_PUBLISH_ENABLED === 'true' || (process.env.RENDER === 'true' && process.env.AUTO_PUBLISH_ENABLED !== 'false');
+
+export async function selectAutomaticCandidate(config, logs, now = new Date(), fetcher = fetchCandidates) {
+  const pool = [];
+  const warnings = [];
+  for (const category of config.categories) {
+    try {
+      const result = await fetcher(category, config, { now });
+      pool.push(...(result.candidates || []).map(candidate => ({ ...candidate, category })));
+      warnings.push(...(result.warnings || []).map(warning => `${category}: ${warning}`));
+    } catch (error) {
+      warnings.push(`${category}: ${safeError(error)}`);
+    }
+  }
+  const candidates = dedupe(
+    pool.filter(candidate => !submittedStories.has(storyId(candidate))),
+    logs.used,
+    config,
+    now
+  ).filter(candidate => !locked(logs, { id: '' }, candidate));
+  if (!candidates.length) throw new Error(`No unused candidates available. ${warnings.join('; ')}`.trim());
+  return { candidate: selectByIntensity(candidates, pool, config, now), warnings };
+}
+
+async function startPublishJob(candidate, category, { slot = null, warnings = [], trigger = 'manual' } = {}) {
+  if (activePublishJob?.status === 'processing') throw Object.assign(new Error('A publishing job is already in progress.'), { statusCode: 409 });
+  if (!candidate?.title || !candidate?.text || !candidate?.url) throw Object.assign(new Error('Invalid candidate article payload'), { statusCode: 400 });
+
+  const id = storyId(candidate);
+  if (submittedStories.has(id)) throw Object.assign(new Error('This story was already submitted.'), { statusCode: 409 });
+  activePublishJob = { status: 'processing', title: candidate.title, category, trigger, stage: 'Starting...', progress: 0 };
+  let config;
+  try { config = await readJSON('config.json'); }
+  catch (error) { activePublishJob = null; throw error; }
+  submittedStories.add(id);
+  try {
+    await writeJSON('logs/studio-submitted.json', [...submittedStories]);
+  } catch (error) {
+    submittedStories.delete(id);
+    activePublishJob = null;
+    throw error;
+  }
+
+  const logs = await loadLogs('logs').catch(() => ({ posts: [], used: [] }));
+  const record = {
+    timestamp: new Date().toISOString(),
+    ...(slot ? { slot: slot.id } : {}),
+    story_id: id,
+    category,
+    source: { name: candidate.source, url: candidate.url },
+    headline: candidate.title,
+    status: 'preparing',
+    ig_media_id: null,
+    trigger,
+    ...(warnings.length ? { warnings } : {})
+  };
+  logs.posts.push(record);
+  logs.used.push({ url: candidate.url, title: candidate.title, timestamp: record.timestamp });
+  try {
+    await saveLogs(logs, 'logs');
+  } catch (error) {
+    submittedStories.delete(id);
+    activePublishJob = null;
+    throw error;
+  }
+  void (async () => {
+    const dir = `output/${id}`;
+    try {
+      activePublishJob.stage = 'Writing Instagram post copy...';
+      activePublishJob.progress = 30;
+      const copy = await script(candidate, category, config);
+
+      activePublishJob.stage = 'Generating a high-res image...';
+      activePublishJob.progress = 55;
+      const buffers = await images(copy, config);
+
+      activePublishJob.stage = 'Compositing image & typography...';
+      activePublishJob.progress = 75;
+      const paths = await compose(buffers, copy, config, dir);
+      const igToken = process.env.IG_ACCESS_TOKEN;
+      const igUser = process.env.IG_USER_ID;
+      if (!igToken || !igUser) throw new Error('Missing IG_ACCESS_TOKEN or IG_USER_ID');
+
+      activePublishJob.stage = 'Resolving public image URL for Instagram...';
+      activePublishJob.progress = 80;
+      const publicBase = await getPublicUrl(PORT);
+      if (!publicBase) throw new Error('Missing PUBLIC_URL; Instagram cannot fetch the generated image');
+      const imageUrls = paths.map(path => `${publicBase}/${path}`);
+
+      activePublishJob.stage = 'Publishing image to @info_crasher...';
+      activePublishJob.progress = 90;
+      const igMediaId = await publish(imageUrls, copy, graph(config, igToken), {
+        user: igUser,
+        persist: async patch => { Object.assign(record, patch); await saveLogs(logs, 'logs'); }
+      });
+
+      record.status = 'published';
+      record.ig_media_id = igMediaId;
+      record.timestamp = new Date().toISOString();
+      await saveLogs(logs, 'logs');
+      await rm(dir, { recursive: true, force: true }).catch(() => {});
+      console.log(`Published ${trigger} Instagram post, media_id=${igMediaId}`);
+      activePublishJob = {
+        status: 'success', stage: 'Post published to @info_crasher!', title: candidate.title,
+        paths: paths.map(path => `/${path}`), ig_media_id: igMediaId, trigger, progress: 100
+      };
+      setTimeout(() => { if (activePublishJob?.ig_media_id === igMediaId) activePublishJob = null; }, 15000);
+    } catch (error) {
+      record.status = record.publish_requested_at ? 'uncertain' : 'failed';
+      record.error = safeError(error);
+      await saveLogs(logs, 'logs').catch(() => {});
+      console.error(`${trigger} publishing failed:`, safeError(error));
+      activePublishJob = { status: 'failed', error: safeError(error), stage: 'Failed', title: candidate.title, trigger, progress: 0 };
+    }
+  })();
+  return { story_id: id };
+}
+
+async function runAutomaticPublisher(now = new Date()) {
+  if (!automaticPublishingEnabled || activePublishJob?.status === 'processing') return;
+  const config = await readJSON('config.json');
+  const slot = getSlot(config, now);
+  if (!slot || attemptedAutomaticSlots.has(slot.id)) return;
+  const logs = await loadLogs('logs').catch(() => ({ posts: [], used: [] }));
+  const slotAlreadyAttempted = logs.posts.some(record => record.slot === slot.id
+    && ['preparing', 'posting', 'published', 'failed', 'uncertain'].includes(record.status));
+  if (slotAlreadyAttempted || locked(logs, slot)) { attemptedAutomaticSlots.add(slot.id); return; }
+
+  attemptedAutomaticSlots.add(slot.id);
+  try {
+    const { candidate, warnings } = await selectAutomaticCandidate(config, logs, now);
+    await startPublishJob(candidate, candidate.category, { slot, warnings, trigger: 'automatic' });
+  } catch (error) {
+    console.error(`Automatic slot ${slot.id} failed:`, safeError(error));
+    const currentLogs = await loadLogs('logs').catch(() => logs);
+    if (!locked(currentLogs, slot)) {
+      currentLogs.posts.push({ timestamp: now.toISOString(), slot: slot.id, category: null, status: 'failed', trigger: 'automatic', error: safeError(error) });
+      await saveLogs(currentLogs, 'logs').catch(() => {});
+    }
+  }
+}
+
+function startAutomaticScheduler() {
+  if (!automaticPublishingEnabled) {
+    console.log('Automatic Render publishing is disabled. Set AUTO_PUBLISH_ENABLED=true to enable it.');
+    return;
+  }
+  console.log('Automatic Render publishing is enabled.');
+  setTimeout(() => void runAutomaticPublisher(), 5000);
+  setInterval(() => void runAutomaticPublisher(), 60000);
+}
 
 function json(res, status, body, headers = {}) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers });
@@ -126,7 +279,10 @@ async function handleApi(req, res, url) {
     try {
       const logs = await loadLogs('logs');
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-      return res.end(JSON.stringify(scheduleOverview(config, logs.posts)));
+      return res.end(JSON.stringify(scheduleOverview(config, logs.posts, new Date(), {
+        runner: automaticPublishingEnabled ? 'render' : 'disabled',
+        localAutoPublishing: automaticPublishingEnabled
+      })));
     } catch (error) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: safeError(error) }));
@@ -211,149 +367,13 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === 'POST' && url.pathname === '/api/publish-now') {
-    if (activePublishJob && activePublishJob.status === 'processing') {
-      res.writeHead(409, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ error: 'A publishing job is already in progress.' }));
+    try {
+      const payload = await readRequestJson(req);
+      const result = await startPublishJob(payload.candidate, payload.category || 'Tech');
+      return json(res, 202, { message: 'Publishing job started', ...result });
+    } catch (error) {
+      return json(res, error.statusCode || 400, { error: safeError(error) });
     }
-
-    let body = '';
-    req.on('data', chunk => { body += chunk; });
-    req.on('end', async () => {
-      try {
-        const payload = JSON.parse(body || '{}');
-        const candidate = payload.candidate;
-        const category = payload.category || 'Tech';
-
-        if (!candidate || !candidate.title || !candidate.text) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'Invalid candidate article payload' }));
-        }
-
-        if (activePublishJob?.status === 'processing' || submittedStories.has(storyId(candidate))) {
-          res.writeHead(409, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'A job is already running or this story was already submitted.' }));
-        }
-        const id = storyId(candidate);
-        submittedStories.add(id);
-        activePublishJob = { status: 'processing', title: candidate.title, stage: 'Starting...', progress: 0 };
-        try {
-          await writeJSON('logs/studio-submitted.json', [...submittedStories]);
-        } catch (error) {
-          submittedStories.delete(id);
-          activePublishJob = null;
-          throw error;
-        }
-
-        activePublishJob = {
-          status: 'processing',
-          stage: 'Generating post copy with Azure GPT-4o...',
-          title: candidate.title,
-          category,
-          progress: 20
-        };
-
-        res.writeHead(202, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ message: 'Publishing job started', story_id: storyId(candidate) }));
-
-        // Run async background processing
-        (async () => {
-          const id = storyId(candidate);
-          const dir = `output/${id}`;
-          try {
-            activePublishJob.stage = 'Writing Instagram post copy...';
-            activePublishJob.progress = 30;
-            const copy = await script(candidate, category, config);
-
-            activePublishJob.stage = 'Generating a high-res image...';
-            activePublishJob.progress = 55;
-            const buffers = await images(copy, config);
-
-            activePublishJob.stage = 'Compositing image & typography...';
-            activePublishJob.progress = 75;
-            const paths = await compose(buffers, copy, config, dir);
-
-            const igToken = process.env.IG_ACCESS_TOKEN;
-            const igUser = process.env.IG_USER_ID;
-
-            let igMediaId = null;
-            let finalStatus = 'generated'; // fallback if no Instagram credentials
-
-            if (igToken && igUser) {
-              activePublishJob.stage = 'Resolving public image URLs for Instagram...';
-              activePublishJob.progress = 80;
-
-              // Resolve a publicly accessible base URL so Instagram can fetch images.
-              // Set PUBLIC_URL=https://your-ngrok-url in .env, or install ngrok for auto-tunnel.
-              const publicBase = await getPublicUrl(PORT);
-
-              if (publicBase) {
-                // Build publicly accessible URLs for each composed image
-                const imageUrls = paths.map(p => `${publicBase}/${p}`);
-
-                activePublishJob.stage = 'Publishing image to @info_crasher...';
-                activePublishJob.progress = 90;
-
-                const api = graph(config, igToken);
-                igMediaId = await publish(imageUrls, copy, api, {
-                  user: igUser,
-                  persist: async patch => { Object.assign(activePublishJob, { igPatch: patch }); }
-                });
-                finalStatus = 'published';
-                console.log(`✅ Published to Instagram, media_id=${igMediaId}`);
-
-                // Clean up local output folder after successful publish
-                await rm(dir, { recursive: true, force: true }).catch(() => {});
-              } else {
-                // No public URL available — images generated but not posted
-                finalStatus = 'generated';
-                console.warn('⚠️  No PUBLIC_URL or ngrok found. Images generated locally but NOT posted to Instagram.');
-                console.warn('   Set PUBLIC_URL=https://your-tunnel.ngrok.io in .env and restart.');
-              }
-            }
-
-            const logs = await loadLogs('logs').catch(() => ({ posts: [], used: [] }));
-            logs.posts.push({
-              timestamp: new Date().toISOString(),
-              story_id: id,
-              category,
-              source: { name: candidate.source, url: candidate.url },
-              headline: candidate.title,
-              status: finalStatus,
-              ig_media_id: igMediaId
-            });
-            await saveLogs(logs, 'logs').catch(() => {});
-
-            const stageMsg = finalStatus === 'published'
-              ? '✅ Post published to @info_crasher!'
-              : '⚠️  Images generated locally — set PUBLIC_URL in .env to post to Instagram.';
-
-            activePublishJob = {
-              status: finalStatus === 'published' ? 'success' : 'no_tunnel',
-              stage: stageMsg,
-              title: candidate.title,
-              paths: paths.map(p => `/${p}`),
-              ig_media_id: igMediaId,
-              progress: 100
-            };
-            // Reset to idle after 15s so the next poll cleanly stops
-            setTimeout(() => { activePublishJob = null; }, 15000);
-          } catch (err) {
-            console.error('Publishing failed:', err);
-            activePublishJob = {
-              status: 'failed',
-              error: safeError(err),
-              stage: 'Failed',
-              progress: 0
-            };
-          }
-        })();
-
-      } catch (err) {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: safeError(err) }));
-      }
-    });
-    return;
   }
 
   res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -471,5 +491,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.log(`🚀 News Carousel Studio running at http://localhost:${PORT}`);
     console.log(`🔒 Private operator access enabled`);
     console.log(`======================================================\n`);
+    startAutomaticScheduler();
   });
 }

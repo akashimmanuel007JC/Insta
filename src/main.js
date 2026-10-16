@@ -20,7 +20,7 @@ export async function prepare({config,now=new Date(),dry=process.env.DRY_RUN==='
  if(locked(logs,slot))return {status:'skipped',reason:'Slot already reserved'};
  if(logs.posts.filter(p=>p.slot?.startsWith(slot.day)&&['posting','uncertain','published'].includes(p.status)).length>=config.schedule.dailyPosts)return {status:'skipped',reason:'Daily limit reached'};
  record={timestamp:now.toISOString(),slot:slot.id,category:null,status:'preparing',error:null,ig_media_id:null};logs.posts.push(record);
- let candidates,warnings=[];
+ let candidates=[],warnings=[];
  if(mock){const m=await import('./mock.js');candidates=[{...m.candidate,category:config.categories[0]}];}
  else {
   const fetch=services.fetchCandidates||fetchCandidates;

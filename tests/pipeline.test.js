@@ -16,6 +16,7 @@ import {collectInsights} from '../src/insights.js';
 import {fetchCandidates} from '../src/sources/index.js';
 import {select} from '../src/select.js';
 import {intensityScore,selectByIntensity} from '../src/intensity.js';
+import {selectAutomaticCandidate} from '../server.js';
 const config=JSON.parse(await readFile(new URL('../config.json',import.meta.url)));
 config.llm.provider='openai';config.llm.responseFormat='json_schema';config.image.provider='openai';
 test('slots run across all categories and omitted times rotate daily',()=>{
@@ -53,6 +54,15 @@ test('intensity favors fresh independently corroborated urgent news',()=>{
  assert.equal(urgentScore.independentSources,2);
  assert.ok(urgentScore.score>intensityScore(routine,[routine,urgent,corroborating],config,now).score);
  assert.equal(selectByIntensity([routine,urgent],[routine,urgent,corroborating],config,now).url,urgent.url);
+});
+test('Render automatic selection gathers and ranks real candidates',async()=>{
+ const now=new Date('2026-10-15T12:00:00Z');
+ const automaticConfig={...config,categories:['World','Tech']};
+ const result=await selectAutomaticCandidate(automaticConfig,{posts:[],used:[]},now,async category=>({
+  candidates:[{...candidate,url:`https://automatic.example/${category.toLowerCase()}`,title:category==='World'?'Major earthquake prompts nationwide emergency response':'Routine software update released',published:'2026-10-15T11:00:00Z',source:category}],
+  warnings:[]
+ }));
+ assert.equal(result.candidate.category,'World');
 });
 test('offline end-to-end dry run is repeatable and never creates public or live state',async()=>{
  const {execFile}=await import('node:child_process');const {promisify}=await import('node:util');const {writeFile,readdir}=await import('node:fs/promises');

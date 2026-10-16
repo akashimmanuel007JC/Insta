@@ -57,5 +57,29 @@
     "headline": "‘Through the gate’: how sporting mentors can lead prisoners down a different path | Cath Bishop",
     "status": "published",
     "ig_media_id": "18092809178675381"
+  },
+  {
+    "timestamp": "2026-10-15T11:07:33.240Z",
+    "story_id": "0f46935e34e80ab607e9",
+    "category": "Tech",
+    "source": {
+      "name": "The Guardian",
+      "url": "https://www.theguardian.com/technology/2026/oct/14/nvidia-donates-to-uk-ai-safety-research"
+    },
+    "headline": "Nvidia, worth $5.5tn, donates $250m to UK for AI safety research",
+    "status": "published",
+    "ig_media_id": "18095732561666938"
+  },
+  {
+    "timestamp": "2026-10-15T11:35:39.902Z",
+    "story_id": "1be052d652fbbf9689c8",
+    "category": "India",
+    "source": {
+      "name": "The Guardian",
+      "url": "https://www.theguardian.com/world/2026/oct/14/leaders-of-indias-cockroach-party-jailed-for-violating-ban-on-protest-site"
+    },
+    "headline": "Leaders of India’s Cockroach party jailed for violating ban on protest site",
+    "status": "published",
+    "ig_media_id": "18128780314829818"
   }
 ]

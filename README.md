@@ -1,8 +1,8 @@
 > Posting format: each story now generates one JPEG and publishes one photo post with a caption and hashtags. Older carousel descriptions below refer to the previous format. Music is not included.
 
-# Daily Context — automated Instagram carousels
+# Daily Context — automated Instagram posts
 
-A Node.js 20 pipeline running entirely on GitHub Actions. At every posting slot it gathers stories from every category, deduplicates them, selects the highest-intensity candidate, writes grounded copy, generates an original illustration, deploys it through GitHub Pages, publishes one photo post, and collects next-day insights. The dashboard only reads `logs/posts.json`. No laptop or server is required after setup.
+A Node.js 20 Studio hosted on Render. At every posting slot it gathers stories from every category, deduplicates them, selects the highest-intensity candidate, and sends it through the same copy, image, hosting, and Instagram publishing pipeline used by the manual “Add to Insta” action.
 
 **Local verification uses simulated content and images. Live posting requires your accounts, credentials and GitHub Pages configuration.** The sole npm dependency is `sharp`; tests, schema validation, HTTP and orchestration use Node built-ins.
 
@@ -50,7 +50,7 @@ Open `http://localhost:3000`; unauthenticated Studio pages and APIs redirect to 
 
 The session cookie requests the practical browser maximum of 400 days and is renewed during authenticated use. Browsers, privacy settings, manual data clearing, and platform policies can still remove it, so no web login can guarantee a literally non-expiring cookie. HTTPS deployments receive the `Secure` cookie flag automatically, including behind a proxy that sends `X-Forwarded-Proto: https`.
 
-To host the Studio on a Node platform such as Render, create a Web Service with build command `npm ci`, start command `node server.js`, and health-check path `/health`. Add `ADMIN_PASSWORD`, `AUTH_SECRET`, the AI/news/Instagram credentials, and set `PUBLIC_URL` to the service's public HTTPS origin. (`npm run studio` is the local command because it loads the ignored `.env`; cloud platforms inject environment variables directly.) The Studio's in-memory login rate limit resets when the service restarts, and free hosts may sleep or discard local files; GitHub Actions remains the durable unattended scheduler.
+To host the Studio on Render, create a Web Service with build command `npm ci`, start command `node server.js`, and health-check path `/health`. Add `ADMIN_PASSWORD`, `AUTH_SECRET`, the AI/news/Instagram credentials, set `PUBLIC_URL` to the service's public HTTPS origin, and set `AUTO_PUBLISH_ENABLED=true`. Render also exposes `RENDER=true`, which enables automatic publishing unless `AUTO_PUBLISH_ENABLED=false`. (`npm run studio` is the local command because it loads the ignored `.env`; cloud platforms inject environment variables directly.) The service must remain awake at scheduled times. Render's ephemeral filesystem can discard local post history on a restart, so attach a persistent disk for durable deduplication and slot locks.
 
 This login protects only the live Node Studio. The separate GitHub Pages output is intentionally public and contains only the dashboard allowlist, post history, and images assembled by `scripts/build-pages.js`; do not treat Pages as a private authenticated application.
 
@@ -117,15 +117,15 @@ Set **Variables** → `PAGES_BASE_URL` to the exact public HTTPS site root, e.g.
 
 The workflow explicitly uploads/deploys a Pages artifact. It does not depend on commits made by `GITHUB_TOKEN` triggering another workflow. Only the dashboard, JPEGs and `posts.json` enter Pages. `used.json`, token metadata, source article text, and private artifacts are excluded.
 
-Run Actions → Scheduled carousel → Run workflow first with **dry_run=true**, **mock_apis=true**. Inspect the private `private-run-output` artifact (two-day retention). Then test real APIs with dry_run=true, mock_apis=false. To intentionally publish, set both to false. Scheduled runs always use real APIs and publish automatically; a manual trigger is not required at runtime.
+The GitHub Actions workflow remains available as a manual private test: run Actions → Scheduled carousel with **dry_run=true**, **mock_apis=true**, then inspect the `private-run-output` artifact. Render is the unattended scheduler; do not manually run the workflow live while a Render slot is active.
 
 ## 4. Schedule and rotation
 
-UTC cron: `30 1,3,5,7,9,11,13,15 * * *`, corresponding to 07:00, 09:00, …, 21:00 IST. Each scheduled posting run adds a uniformly random 0–600 second delay. GitHub can delay or drop scheduled jobs, so these are scheduled slots, not guaranteed posting times. Late jobs outside the configured 90-minute allowance skip; no catch-up flood occurs. Public-repository scheduled workflows may be disabled after extended repository inactivity; consult GitHub's current scheduling rules.
+The Render server checks the configured IST schedule once per minute. A slot remains eligible for `schedule.maxDelayMinutes`, allowing a short restart or wake-up delay without creating a catch-up flood.
 
-`config.json` starts at **6 posts/day**. The workflow wakes eight times and the app rotates two omitted slots. Set `schedule.dailyPosts` to 8 when ready. Active hours and count are configured in JSON; the cron provides the maximum wakeup envelope. Start/end hours must be odd hours within 07–21 and intervalHours must be 2. Expanding outside that envelope also requires editing cron; validation rejects unsupported settings.
+`config.json` controls the active hours, interval, and daily post count. The configured slots rotate which eligible times are omitted when `dailyPosts` is lower than the number of available times.
 
-Categories rotate daily plus an extra phase shift each complete slot cycle. This decouples category selection from omitted slots, so every category reaches different times over subsequent weeks. Test coverage checks eight weeks. The original slot is stored even when GitHub runs late. A shared `instagram-state` concurrency group serializes both workflows. GitHub can replace pending runs; the system does not assume every scheduled event executes.
+Every automatic slot considers candidates from all categories and chooses the strongest current story using the intensity ranking. The original slot is stored even when Render starts the job late.
 
 ## Content and source behavior
 
@@ -214,4 +214,4 @@ These are drafts: this integration does not update your Instagram bio or profile
 
 ### Schedule monitor
 
-The Studio displays today's active posting slots and the next planned time/topic in IST, with a countdown. It uses the same rotating-slot logic as the publisher and reads outcomes from local logs. The local Studio does not execute scheduled posts: those run through GitHub Actions. Runner availability and remote outcomes are not verified by this display; an elapsed slot without a log entry means only that its planned time has passed. Refreshing the monitor does not trigger a post.
+The Studio displays today's active posting slots and the next planned time/topic in IST, with a countdown. On Render, the server checks once per minute for an eligible slot and runs the same publishing function used by the manual button. Automatic publishing is disabled in ordinary local development unless `AUTO_PUBLISH_ENABLED=true`. An elapsed slot without a log entry means the service was not awake or no run was recorded.

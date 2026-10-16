@@ -16,7 +16,7 @@ export function getSlot(config, now=new Date(), explicit) {
 }
 
 // Use the same rotation rules as the publisher, without explicit-slot overrides.
-export function scheduleOverview(config, posts=[], now=new Date()) {
+export function scheduleOverview(config, posts=[], now=new Date(), {runner='github_actions',localAutoPublishing=false}={}) {
  const localDate=new Date(now.getTime()+330*60000).toISOString().slice(0,10);
  const midnight=Date.parse(`${localDate}T00:00:00+05:30`);
  const slots=[];
@@ -30,5 +30,5 @@ export function scheduleOverview(config, posts=[], now=new Date()) {
    slots.push({...slot,category:record?.category||slot.category,status:states.includes(record?.status)?record.status:(at>now?'upcoming':'elapsed')});
   }
  }
- return {timezone:config.schedule.timezone,now:now.toISOString(),localDate,dailyPosts:config.schedule.dailyPosts,runner:'github_actions',localAutoPublishing:false,next:slots.find(s=>s.status==='upcoming')||null,slots};
+ return {timezone:config.schedule.timezone,now:now.toISOString(),localDate,dailyPosts:config.schedule.dailyPosts,runner,localAutoPublishing,next:slots.find(s=>s.status==='upcoming')||null,slots};
 }

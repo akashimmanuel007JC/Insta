@@ -20,3 +20,8 @@ test('monitor reports recorded outcomes and advances next slot into tomorrow',()
  assert.equal(result.slots[1].status,'elapsed');
  assert.equal(result.next.day,'2026-10-16');
 });
+test('monitor reports the configured Render scheduler',()=>{
+ const result=scheduleOverview(config,[],new Date('2026-10-15T00:00:00Z'),{runner:'render',localAutoPublishing:true});
+ assert.equal(result.runner,'render');
+ assert.equal(result.localAutoPublishing,true);
+});
