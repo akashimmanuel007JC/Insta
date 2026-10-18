@@ -522,7 +522,7 @@ body {
   border-bottom: none;
 }
 
-.badge-published {
+.badge-status {
   background: rgba(16, 185, 129, 0.15);
   color: #34d399;
   padding: 4px 8px;
@@ -530,6 +530,33 @@ body {
   font-size: 0.75rem;
   font-weight: 600;
 }
+
+.badge-failed, .badge-uncertain {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+}
+
+.badge-posting, .badge-preparing {
+  background: rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
+}
+
+.badge-unknown {
+  background: rgba(148, 163, 184, 0.15);
+  color: #cbd5e1;
+}
+
+.history-error {
+  display: block;
+  min-width: 180px;
+  max-width: 360px;
+  color: #fca5a5;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.history-empty { color: var(--text-muted); }
 
 /* Spinner */
 .spinner {

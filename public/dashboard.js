@@ -233,14 +233,24 @@ async function publishStory(index) {
   }
 }
 
-let pollInterval = null;
-async function pollJobStatus() {
-  if (pollInterval) clearInterval(pollInterval);
+let pollTimer = null;
+let pollGeneration = 0;
 
-  pollInterval = setInterval(async () => {
+function stopJobPolling() {
+  if (pollTimer) clearTimeout(pollTimer);
+  pollTimer = null;
+}
+
+function pollJobStatus() {
+  stopJobPolling();
+  const generation = ++pollGeneration;
+
+  const check = async () => {
     try {
       const res = await fetch('/api/job-status');
+      if (!res.ok) throw new Error('Could not read publishing status');
       const job = await res.json();
+      if (generation !== pollGeneration) return;
       const banner = document.getElementById('live-progress-banner');
       const title = document.getElementById('progress-title');
       const stage = document.getElementById('progress-stage');
@@ -253,14 +263,14 @@ async function pollJobStatus() {
         title.textContent = `Publishing: ${job.title || 'Breaking News'}`;
         stage.textContent = job.stage || 'Processing...';
         fill.style.width = `${job.progress || 20}%`;
+        pollTimer = setTimeout(check, 2500);
       } else if (job.status === 'success') {
         banner.style.display = 'block';
         fill.style.background = '#22c55e';
         title.textContent = `Published to @info_crasher! 🎉`;
         stage.textContent = job.title;
         fill.style.width = '100%';
-        clearInterval(pollInterval);
-        pollInterval = null;
+        stopJobPolling();
         setTimeout(() => { banner.style.display = 'none'; }, 8000);
         loadHistory();
       } else if (job.status === 'no_tunnel') {
@@ -269,8 +279,7 @@ async function pollJobStatus() {
         title.textContent = `⚠️ Images generated — but NOT posted to Instagram`;
         stage.textContent = `Add PUBLIC_URL=https://your-ngrok-url to .env, then restart the server.`;
         fill.style.width = '100%';
-        clearInterval(pollInterval);
-        pollInterval = null;
+        stopJobPolling();
         setTimeout(() => { banner.style.display = 'none'; }, 12000);
         loadHistory();
       } else if (job.status === 'failed') {
@@ -279,16 +288,19 @@ async function pollJobStatus() {
         title.textContent = `Publish failed`;
         stage.textContent = job.error || 'Something went wrong';
         fill.style.width = '100%';
-        clearInterval(pollInterval);
-        pollInterval = null;
+        stopJobPolling();
+        loadHistory();
       } else {
         // idle — stop polling
         banner.style.display = 'none';
-        clearInterval(pollInterval);
-        pollInterval = null;
+        stopJobPolling();
       }
-    } catch {}
-  }, 2500);
+    } catch {
+      if (generation === pollGeneration) pollTimer = setTimeout(check, 2500);
+    }
+  };
+
+  void check();
 }
 
 async function loadHistory() {
@@ -298,19 +310,22 @@ async function loadHistory() {
     const tbody = document.getElementById('history-tbody');
 
     if (!posts.length) {
-      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 20px; color: var(--text-muted);">No posts published yet</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px; color: var(--text-muted);">No activity recorded yet</td></tr>`;
       return;
     }
 
     tbody.innerHTML = posts.map(p => {
       const date = new Date(p.timestamp).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
+      const status = ['published', 'failed', 'uncertain', 'posting', 'preparing'].includes(p.status) ? p.status : 'unknown';
+      const details = p.error ? `<span class="history-error">${escapeHtml(p.error)}</span>` : '<span class="history-empty">—</span>';
       return `
         <tr>
           <td>${date}</td>
           <td><span class="source-tag">${escapeHtml(p.category || 'News')}</span></td>
           <td style="font-weight: 500;">${escapeHtml(p.headline || 'Story')}</td>
           <td>${escapeHtml(p.source?.name || 'News Source')}</td>
-          <td><span class="badge-published">${p.status}</span></td>
+          <td><span class="badge-status badge-${status}">${escapeHtml(p.status || 'unknown')}</span></td>
+          <td>${details}</td>
         </tr>
       `;
     }).join('');

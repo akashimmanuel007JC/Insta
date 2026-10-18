@@ -36,6 +36,13 @@ test('schema, word limits, unsupported numbers and one correction',async()=>{
  let calls=0;await script(candidate,'Space',config,async()=>++calls===1?bad:s);assert.equal(calls,2);
  calls=0;await assert.rejects(script(candidate,'Space',config,async()=>{calls++;return bad;}));assert.equal(calls,2);
 });
+test('numeric claims accept equivalent source wording and formatting',()=>{
+ const source={...candidate,text:`${candidate.text} Six ships were affected and 1,000 journeys were delayed.`};
+ const s=mockScript('Space');s.slides[0].body='6 ships affected across 1000 delayed journeys.';
+ assert.equal(validateScript(s,source,'Space'),s);
+ const bad=structuredClone(s);bad.slides[0].body='7 ships affected across 1000 delayed journeys.';
+ assert.throws(()=>validateScript(bad,source,'Space'),/Unsupported numeric claim: 7/);
+});
 test('compositing produces one real 1080x1350 JPEGs',async()=>{const dir=await mkdtemp(join(tmpdir(),'carousel-test-'));try{const s=mockScript('Space');const files=await compose(await mockImages(s),s,config,dir);assert.equal(files.length,1);for(const file of files){const m=await sharp(file).metadata();assert.equal(m.format,'jpeg');assert.equal(m.width,1080);assert.equal(m.height,1350);}}finally{await rm(dir,{recursive:true,force:true});}});
 test('single image, durable intent and quota check before publish',async()=>{const events=[];let n=0;const api=async(path,params,method)=>{events.push(path);if(path.endsWith('content_publishing_limit'))return {data:[{quota_usage:0,config:{quota_total:100}}]};if(path.endsWith('media_publish'))return {id:'published'};if(method==='POST'){assert.equal(params.image_url,'https://x/1.jpg');assert.equal(params.media_type,undefined);assert.equal(params.is_carousel_item,undefined);assert.ok(params.caption);return {id:String(++n)};}return {status_code:'FINISHED'};};const id=await publish(['https://x/1.jpg'],mockScript('Space'),api,{user:'ig',persist:async p=>events.push(p.publish_requested_at?'intent':'state')});assert.equal(id,'published');assert.equal(events.at(-2),'intent');assert.equal(events.at(-1),'ig/media_publish');assert.equal(events.filter(e=>e==='ig/content_publishing_limit').length,2);});
 test('quota exhaustion and ERROR prevent publication',async()=>{await assert.rejects(publish(['https://x/1.jpg'],{},async()=>({data:[{quota_usage:100,config:{quota_total:100}}]}),{user:'ig'}),/limit/);await assert.rejects(waitFinished('c',async()=>({status_code:'ERROR'})),/ERROR/);let now=0;await assert.rejects(waitFinished('c',async()=>({status_code:'IN_PROGRESS'}),{now:()=>now,wait:async()=>{now+=5000;},timeout:10000}),/timed out/);});

@@ -7,6 +7,27 @@ export function validateSchema(v,s,path='root') {
  if(s.type==='array'){if(!Array.isArray(v)||v.length<s.minItems||v.length>s.maxItems)throw new Error(`${path}: invalid length`);v.forEach((x,i)=>validateSchema(x,s.items,`${path}.${i}`));}
 }
 const words=s=>s.trim().split(/\s+/).length;
+const smallNumbers=['zero','one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen'];
+const tensNumbers=['','','twenty','thirty','forty','fifty','sixty','seventy','eighty','ninety'];
+function integerWords(value) {
+ if(!Number.isSafeInteger(value)||value<0||value>999)return [];
+ const variants=[];
+ const underHundred=n=>n<20?smallNumbers[n]:`${tensNumbers[Math.floor(n/10)]}${n%10?`-${smallNumbers[n%10]}`:''}`;
+ if(value<100)return [underHundred(value)];
+ const remainder=value%100,base=`${smallNumbers[Math.floor(value/100)]} hundred`;
+ variants.push(remainder?`${base} ${underHundred(remainder)}`:base);
+ if(remainder)variants.push(`${base} and ${underHundred(remainder)}`);
+ return variants;
+}
+const numericClaims=text=>text.match(/\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?/g)||[];
+const normalizedNumber=value=>value.replace(/,/g,'').replace(/\.0+$/,'');
+function sourceSupportsNumber(value,candidate) {
+ const source=`${candidate.title} ${candidate.text}`;
+ const normalized=normalizedNumber(value);
+ if(numericClaims(source).some(item=>normalizedNumber(item)===normalized))return true;
+ if(!/^\d+$/.test(normalized))return false;
+ return integerWords(Number(normalized)).some(form=>new RegExp(`(?<![\\p{L}\\p{N}])${form.replaceAll('-', '[-\\s]')}(?![\\p{L}\\p{N}])`,'iu').test(source));
+}
 export function validateScript(s,c,category) {
  validateSchema(s,scriptSchema);
  if(s.category!==category||s.source_name!==c.source||s.source_url!==c.url)throw new Error('Source metadata mismatch');
@@ -16,7 +37,7 @@ export function validateScript(s,c,category) {
  if(s.hashtags.some(t=>!/^#[\p{L}\p{N}_]+$/u.test(t))||new Set(s.hashtags).size!==s.hashtags.length)throw new Error('Invalid hashtags');
  if(!s.caption.includes(`Source: ${c.source}. AI-generated illustration.`)||s.caption.split('\n').filter(Boolean).length<4||`${s.caption}\n\n${s.hashtags.join(' ')}`.length>2200)throw new Error('Invalid caption');
  const prose=s.slides.map(x=>x.headline+' '+x.body).join(' ')+' '+s.caption;
- for(const n of prose.match(/\d+(?:[.,]\d+)*/g)||[])if(!c.text.includes(n)&&!c.title.includes(n))throw new Error('Unsupported numeric claim');
+ for(const n of numericClaims(prose))if(!sourceSupportsNumber(n,c))throw new Error(`Unsupported numeric claim: ${n}`);
  const sourceWords=c.text.toLowerCase().split(/\s+/);const lower=prose.toLowerCase();for(let i=0;i+12<=sourceWords.length;i++)if(lower.includes(sourceWords.slice(i,i+12).join(' ')))throw new Error('Verbatim source passage');
  return s;
 }
