@@ -3,7 +3,7 @@ import {rm} from 'node:fs/promises';
 import {readJSON,writeJSON,safeError,required} from './util.js';
 import {getSlot} from './schedule.js';
 import {fetchCandidates} from './sources/index.js';
-import {loadLogs,saveLogs,dedupe,locked,storyId} from './log.js';
+import {loadLogs,saveLogs,dedupe,locked,storyId,storyLocked,relatedToPostHistory} from './log.js';
 import {selectByIntensity} from './intensity.js';
 import {script,validateScript} from './script.js';
 import {images} from './images.js';
@@ -35,18 +35,22 @@ export async function prepare({config,now=new Date(),dry=process.env.DRY_RUN==='
  }
  record.warnings=warnings;
  const pool=candidates;
- candidates=dedupe(candidates,logs.used,config,now).filter(c=>!locked(logs,slot,c));if(!candidates.length)throw new Error('No unused candidates');
+ candidates=dedupe(candidates,logs.used,config,now).filter(c=>!storyLocked(logs,c)&&!relatedToPostHistory(c,logs.posts,config.historySimilarity));if(!candidates.length)throw new Error('No unused or sufficiently distinct candidates');
  const chosen=mock?{...candidates[0],intensity:{score:0,label:'test',independentSources:1,components:{}}}:selectByIntensity(candidates,pool,config,now);
  const category=chosen.category;
  Object.assign(record,{category,story_id:storyId(chosen),source:{name:chosen.source,url:chosen.url},headline:chosen.title,intensity:chosen.intensity});
+ logs.used.push({url:chosen.url,title:chosen.title,timestamp:now.toISOString()});
+ await saveLogs(logs,logRoot);
+ if(!dry)await checkpoint('Reserve story before content generation');
  const m=mock?await import('./mock.js'):null;
  const copy=mock?validateScript(m.mockScript(category),chosen,category):await (services.script||script)(chosen,category,config);
+ record.caption=copy.caption;
  const buffers=mock?await m.mockImages(copy):await (services.images||images)(copy,config);
  const paths=await compose(buffers,copy,config,`output/${record.story_id}`);
  if(dry){record.status='dry_run';await saveLogs(logs,logRoot);const result={status:'dry_run',slot,script:copy,paths};await writeJSON('output/result.json',result);return result;}
  if(config.instagram.loginMode==='instagram')required('GH_SECRETS_TOKEN');
  await token(config,{refresh:false}); // Maintenance refresh runs in the separate daily workflow.
- record.status='posting';logs.used.push({url:chosen.url,title:chosen.title,timestamp:now.toISOString()});
+ record.status='posting';
  await saveLogs(logs,logRoot);await checkpoint('Reserve story before any Instagram publish');
  const urls=await stageImages(paths,record.story_id,config,now);
  const pending={record_id:record.story_id,slot:slot.id,urls,script:copy};await writeJSON('output/pending.json',pending);return {status:'staged',...pending};

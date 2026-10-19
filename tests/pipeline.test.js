@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import sharp from 'sharp';
 import {getSlot} from '../src/schedule.js';
-import {dedupe,locked,storyId} from '../src/log.js';
+import {dedupe,locked,storyId,storyLocked,relatedToPostHistory} from '../src/log.js';
 import {script,validateScript} from '../src/script.js';
 import {candidate,mockScript,mockImages} from '../src/mock.js';
 import {compose} from '../src/compose.js';
@@ -71,6 +71,16 @@ test('Render automatic selection gathers and ranks real candidates',async()=>{
  }));
  assert.equal(result.candidate.category,'World');
 });
+test('automatic selection skips content related to an earlier posted caption',async()=>{
+ const now=new Date('2026-10-15T12:00:00Z');
+ const automaticConfig={...config,categories:['World','Tech']};
+ const logs={used:[],posts:[{status:'published',headline:'Major earthquake prompts nationwide emergency response',caption:'Rescue teams are responding after a powerful earthquake damaged homes and forced evacuations.'}]};
+ assert.ok(relatedToPostHistory({title:'Earthquake emergency response expands',text:'Rescue teams continue work in damaged communities.'},logs.posts,automaticConfig.historySimilarity));
+ const result=await selectAutomaticCandidate(automaticConfig,logs,now,async category=>({
+  candidates:[{...candidate,url:`https://distinct.example/${category.toLowerCase()}`,title:category==='World'?'Major earthquake prompts nationwide emergency response today':'New processor design lowers data-centre energy use',text:category==='World'?'Rescue teams respond after an earthquake damaged homes.':'Engineers tested a processor architecture that reduces electricity demand.',published:'2026-10-15T11:00:00Z',source:category}],warnings:[]
+ }));
+ assert.equal(result.candidate.category,'Tech');
+});
 test('offline end-to-end dry run is repeatable and never creates public or live state',async()=>{
  const {execFile}=await import('node:child_process');const {promisify}=await import('node:util');const {writeFile,readdir}=await import('node:fs/promises');
  const dir=await mkdtemp(join(tmpdir(),'carousel-e2e-'));try{await writeFile(join(dir,'config.json'),JSON.stringify(config));for(let i=0;i<2;i++)await promisify(execFile)(process.execPath,[new URL('../src/main.js',import.meta.url).pathname],{cwd:dir,env:{...process.env,DRY_RUN:'true',MOCK_APIS:'true'}});const result=JSON.parse(await readFile(join(dir,'output/result.json')));assert.equal(result.status,'dry_run');assert.equal(result.paths.length,1);assert.deepEqual((await readdir(dir)).sort(),['config.json','output']);}finally{await rm(dir,{recursive:true,force:true});}
@@ -80,9 +90,16 @@ test('token refresh persists secret before metadata and reuses fresh token next 
  try{const now=new Date('2026-10-13');const result=await token(config,{now,metadataPath,notify:async x=>events.push(x),get:async url=>{calls++;assert.equal(new URL(url).pathname,'/refresh_access_token');return {access_token:'new-test-token',expires_in:60*86400};},save:async t=>{saved=t;}});assert.equal(result,saved);const meta=JSON.parse(await readFile(metadataPath));assert.equal(meta.fingerprint,createHash('sha256').update(saved).digest('hex'));assert.ok(!JSON.stringify(meta).includes(saved));process.env.IG_ACCESS_TOKEN=saved;await token(config,{now:new Date(+now+86400000),metadataPath,get:async()=>{throw new Error('should not refresh');},notify:async()=>{}});assert.equal(calls,1);
  }finally{for(const [k,v]of Object.entries(original))if(v===undefined)delete process.env[k];else process.env[k]=v;await rm(dir,{recursive:true,force:true});}
 });
-test('failed slots cannot be retried, and an in-progress local record does not self-block',()=>{assert.ok(locked({posts:[{slot:'slot',status:'failed'}]},{id:'slot'}));assert.equal(locked({posts:[{slot:'slot',status:'preparing'}]},{id:'slot'},candidate),false);});
+test('failed and in-progress slots or stories cannot be retried',()=>{
+ for(const status of ['preparing','posting','published','failed','uncertain']) {
+  const logs={posts:[{slot:'slot',story_id:storyId(candidate),status}]};
+  assert.ok(locked(logs,{id:'slot'}));
+  assert.ok(storyLocked(logs,candidate));
+  assert.ok(locked(logs,{id:'later'},candidate));
+ }
+});
 test('LLM adapter requests strict structured output and rejects refusals',async()=>{const {llm}=await import('../src/llm.js');const previous=process.env.LLM_API_KEY;process.env.LLM_API_KEY='fake-test-key';try{let payload;const response=await llm(config,'Return JSON',{}, {type:'object'},async(url,opts)=>{payload=JSON.parse(opts.body);return {choices:[{finish_reason:'stop',message:{content:'{"ok":true}'}}]};});assert.equal(response.ok,true);assert.equal(payload.response_format.json_schema.strict,true);await assert.rejects(llm(config,'x',{}, {},async()=>({choices:[{finish_reason:'stop',message:{refusal:'No'}}]})),/refused/);}finally{if(previous===undefined)delete process.env.LLM_API_KEY;else process.env.LLM_API_KEY=previous;}});
-test('image adapter makes one request per slide with visual constraints',async()=>{const {images}=await import('../src/images.js');const previous=process.env.IMAGE_API_KEY;process.env.IMAGE_API_KEY='fake-image-key';try{let calls=0;const result=await images(mockScript('Space'),config,async(url,opts)=>{calls++;const body=JSON.parse(opts.body);assert.equal(body.n,1);assert.match(body.prompt,/no text, letters/);assert.match(body.prompt,/watermarks/);return {data:[{b64_json:Buffer.from('image').toString('base64')}]};});assert.equal(calls,1);assert.equal(result.length,1);assert.equal(result[0].toString(),'image');}finally{if(previous===undefined)delete process.env.IMAGE_API_KEY;else process.env.IMAGE_API_KEY=previous;}});
+test('image adapter makes one non-retried request per slide with visual constraints',async()=>{const {images}=await import('../src/images.js');const previous=process.env.IMAGE_API_KEY;process.env.IMAGE_API_KEY='fake-image-key';try{let calls=0;const result=await images(mockScript('Space'),config,async(url,opts,retry)=>{calls++;assert.equal(retry.attempts,1);const body=JSON.parse(opts.body);assert.equal(body.n,1);assert.match(body.prompt,/no text, letters/);assert.match(body.prompt,/watermarks/);return {data:[{b64_json:Buffer.from('image').toString('base64')}]};});assert.equal(calls,1);assert.equal(result.length,1);assert.equal(result[0].toString(),'image');}finally{if(previous===undefined)delete process.env.IMAGE_API_KEY;else process.env.IMAGE_API_KEY=previous;}});
 test('Azure adapter uses deployment routes and api-key authentication',async()=>{
  const {provider}=await import('../src/provider.js');
  const vars={AZURE_OPENAI_ENDPOINT:'https://test.openai.azure.com/',AZURE_OPENAI_DEPLOYMENT:'my-text',AZURE_OPENAI_API_VERSION:'2024-02-15-preview',AZURE_OPENAI_API_KEY:'fake'};

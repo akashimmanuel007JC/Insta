@@ -106,6 +106,7 @@
   "maxAgeDays": 3,
   "dedupeDays": 30,
   "titleSimilarity": 0.72,
+  "historySimilarity": 0.2,
   "intensity": {
     "recencyWeight": 35,
     "corroborationWeight": 35,

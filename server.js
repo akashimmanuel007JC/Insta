@@ -11,7 +11,7 @@ import { script } from './src/script.js';
 import { images } from './src/images.js';
 import { compose } from './src/compose.js';
 import { publish, graph } from './src/publish.js';
-import { dedupe, loadLogs, locked, saveLogs, storyId } from './src/log.js';
+import { dedupe, loadLogs, locked, saveLogs, storyId, storyLocked, relatedToPostHistory } from './src/log.js';
 import { getSlot, scheduleOverview } from './src/schedule.js';
 import { selectByIntensity } from './src/intensity.js';
 import {
@@ -77,8 +77,9 @@ export async function selectAutomaticCandidate(config, logs, now = new Date(), f
     logs.used,
     config,
     now
-  ).filter(candidate => !locked(logs, { id: '' }, candidate));
-  if (!candidates.length) throw new Error(`No unused candidates available. ${warnings.join('; ')}`.trim());
+  ).filter(candidate => !storyLocked(logs, candidate)
+    && !relatedToPostHistory(candidate, logs.posts, config.historySimilarity));
+  if (!candidates.length) throw new Error(`No unused or sufficiently distinct candidates available. ${warnings.join('; ')}`.trim());
   return { candidate: selectByIntensity(candidates, pool, config, now), warnings };
 }
 
@@ -129,6 +130,8 @@ async function startPublishJob(candidate, category, { slot = null, warnings = []
       activePublishJob.stage = 'Writing Instagram post copy...';
       activePublishJob.progress = 30;
       const copy = await script(candidate, category, config);
+      record.caption = copy.caption;
+      await saveLogs(logs, 'logs');
 
       activePublishJob.stage = 'Generating a high-res image...';
       activePublishJob.progress = 55;
