@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { mkdir } from 'node:fs/promises';
 import { readJSON, writeJSON } from './util.js';
 export function canonicalURL(raw) { const u=new URL(raw); u.hash=''; for(const k of [...u.searchParams.keys()]) if(/^utm_|^(fbclid|gclid)$/.test(k))u.searchParams.delete(k); u.searchParams.sort(); return u.href.replace(/\/$/,''); }
 export const storyId = c => createHash('sha256').update(canonicalURL(c.url)).digest('hex').slice(0,20);
@@ -21,6 +22,12 @@ export function dedupe(candidates,used,config,now=new Date()) {
 }
 export async function loadLogs(root='logs') { return {posts:await readJSON(`${root}/posts.json`,[]),used:await readJSON(`${root}/used.json`,[])}; }
 export async function saveLogs(logs,root='logs') { await writeJSON(`${root}/posts.json`,logs.posts); await writeJSON(`${root}/used.json`,logs.used); }
+export async function claimSlot(slot,root='logs') {
+ const lockRoot=`${root}/slot-locks`,lockId=createHash('sha256').update(slot.id).digest('hex');
+ await mkdir(lockRoot,{recursive:true});
+ try { await mkdir(`${lockRoot}/${lockId}`);return true; }
+ catch(error) { if(error.code==='EEXIST')return false;throw error; }
+}
 const RESERVED_STATUSES=['preparing','posting','published','failed','uncertain'];
 export function storyLocked(logs,candidate) { return logs.posts.some(p=>p.story_id===storyId(candidate)&&RESERVED_STATUSES.includes(p.status)); }
 export function locked(logs,slot,candidate) { return logs.posts.some(p=>p.slot===slot.id&&RESERVED_STATUSES.includes(p.status)) || Boolean(candidate&&storyLocked(logs,candidate)); }

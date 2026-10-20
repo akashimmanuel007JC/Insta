@@ -50,7 +50,7 @@ Open `http://localhost:3000`; unauthenticated Studio pages and APIs redirect to 
 
 The session cookie requests the practical browser maximum of 400 days and is renewed during authenticated use. Browsers, privacy settings, manual data clearing, and platform policies can still remove it, so no web login can guarantee a literally non-expiring cookie. HTTPS deployments receive the `Secure` cookie flag automatically, including behind a proxy that sends `X-Forwarded-Proto: https`.
 
-To host the Studio on Render, create a Web Service with build command `npm ci`, start command `node server.js`, and health-check path `/health`. Add `ADMIN_PASSWORD`, `AUTH_SECRET`, the AI/news/Instagram credentials, set `PUBLIC_URL` to the service's public HTTPS origin, and set `AUTO_PUBLISH_ENABLED=true`. Render also exposes `RENDER=true`, which enables automatic publishing unless `AUTO_PUBLISH_ENABLED=false`. (`npm run studio` is the local command because it loads the ignored `.env`; cloud platforms inject environment variables directly.) The service must remain awake at scheduled times. Render's ephemeral filesystem can discard local post history on a restart, so attach a persistent disk for durable deduplication and slot locks.
+To host the Studio on Render, create a Web Service with build command `npm ci`, start command `node server.js`, and health-check path `/health`. Add `ADMIN_PASSWORD`, `AUTH_SECRET`, the AI/news/Instagram credentials, and set `PUBLIC_URL` to the service's public HTTPS origin. Render exposes `RENDER=true`, which enables automatic publishing unless `AUTO_PUBLISH_ENABLED=false`. Automatic scheduling never starts on a laptop, even if its environment accidentally contains `AUTO_PUBLISH_ENABLED=true`; local Studio sessions can still publish only through an explicit manual action. (`npm run studio` is the local command because it loads the ignored `.env`; cloud platforms inject environment variables directly.) The service must remain awake at scheduled times. Attach a persistent disk for durable deduplication and atomic slot locks; Render's ephemeral filesystem can discard both on a restart.
 
 This login protects only the live Node Studio. The separate GitHub Pages output is intentionally public and contains only the dashboard allowlist, post history, and images assembled by `scripts/build-pages.js`; do not treat Pages as a private authenticated application.
 
@@ -121,7 +121,7 @@ The GitHub Actions workflow remains available as a manual private test: run Acti
 
 ## 4. Schedule and rotation
 
-The Render server checks the configured IST schedule once per minute. A slot remains eligible for `schedule.maxDelayMinutes`, allowing a short restart or wake-up delay without creating a catch-up flood.
+The Render server checks the configured IST schedule once per minute. Before generating anything, it atomically claims that slot on the backend's persistent disk; overlapping backend checks and restarts cannot claim the same slot twice. A slot remains eligible for `schedule.maxDelayMinutes`, allowing a short restart or wake-up delay without creating a catch-up flood.
 
 `config.json` controls the active hours, interval, and daily post count. The configured slots rotate which eligible times are omitted when `dailyPosts` is lower than the number of available times.
 

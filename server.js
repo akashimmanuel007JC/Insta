@@ -11,7 +11,7 @@ import { script } from './src/script.js';
 import { images } from './src/images.js';
 import { compose } from './src/compose.js';
 import { publish, graph } from './src/publish.js';
-import { dedupe, loadLogs, locked, saveLogs, storyId, storyLocked, relatedToPostHistory } from './src/log.js';
+import { claimSlot, dedupe, loadLogs, locked, saveLogs, storyId, storyLocked, relatedToPostHistory } from './src/log.js';
 import { getSlot, scheduleOverview } from './src/schedule.js';
 import { selectByIntensity } from './src/intensity.js';
 import {
@@ -58,7 +58,8 @@ const MIME = {
 let activePublishJob = null;
 const submittedStories = new Set(await readJSON('logs/studio-submitted.json', []));
 const attemptedAutomaticSlots = new Set();
-const automaticPublishingEnabled = process.env.AUTO_PUBLISH_ENABLED === 'true' || (process.env.RENDER === 'true' && process.env.AUTO_PUBLISH_ENABLED !== 'false');
+export const automaticPublishingEnabledFor = env => env.RENDER === 'true' && env.AUTO_PUBLISH_ENABLED !== 'false';
+const automaticPublishingEnabled = automaticPublishingEnabledFor(process.env);
 
 export async function selectAutomaticCandidate(config, logs, now = new Date(), fetcher = fetchCandidates) {
   const pool = [];
@@ -191,6 +192,7 @@ async function runAutomaticPublisher(now = new Date()) {
 
   attemptedAutomaticSlots.add(slot.id);
   try {
+    if (!await claimSlot(slot, 'logs')) return;
     const { candidate, warnings } = await selectAutomaticCandidate(config, logs, now);
     await startPublishJob(candidate, candidate.category, { slot, warnings, trigger: 'automatic' });
   } catch (error) {
@@ -205,7 +207,7 @@ async function runAutomaticPublisher(now = new Date()) {
 
 function startAutomaticScheduler() {
   if (!automaticPublishingEnabled) {
-    console.log('Automatic Render publishing is disabled. Set AUTO_PUBLISH_ENABLED=true to enable it.');
+    console.log('Automatic publishing is disabled. It runs only on Render unless AUTO_PUBLISH_ENABLED=false.');
     return;
   }
   console.log('Automatic Render publishing is enabled.');

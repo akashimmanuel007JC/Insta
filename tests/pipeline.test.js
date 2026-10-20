@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import sharp from 'sharp';
 import {getSlot} from '../src/schedule.js';
-import {dedupe,locked,storyId,storyLocked,relatedToPostHistory} from '../src/log.js';
+import {claimSlot,dedupe,locked,storyId,storyLocked,relatedToPostHistory} from '../src/log.js';
 import {script,validateScript} from '../src/script.js';
 import {candidate,mockScript,mockImages} from '../src/mock.js';
 import {compose} from '../src/compose.js';
@@ -16,7 +16,7 @@ import {collectInsights} from '../src/insights.js';
 import {fetchCandidates} from '../src/sources/index.js';
 import {select} from '../src/select.js';
 import {intensityScore,selectByIntensity} from '../src/intensity.js';
-import {selectAutomaticCandidate} from '../server.js';
+import {automaticPublishingEnabledFor,selectAutomaticCandidate} from '../server.js';
 const config=JSON.parse(await readFile(new URL('../config.json',import.meta.url)));
 config.llm.provider='openai';config.llm.responseFormat='json_schema';config.image.provider='openai';
 test('slots run across all categories and omitted times rotate daily',()=>{
@@ -97,6 +97,19 @@ test('failed and in-progress slots or stories cannot be retried',()=>{
   assert.ok(storyLocked(logs,candidate));
   assert.ok(locked(logs,{id:'later'},candidate));
  }
+});
+test('automatic publishing is backend-only and each persisted slot is claimed once',async()=>{
+ assert.equal(automaticPublishingEnabledFor({RENDER:'true'}),true);
+ assert.equal(automaticPublishingEnabledFor({RENDER:'true',AUTO_PUBLISH_ENABLED:'false'}),false);
+ assert.equal(automaticPublishingEnabledFor({AUTO_PUBLISH_ENABLED:'true'}),false);
+ const dir=await mkdtemp(join(tmpdir(),'carousel-slot-lock-'));
+ try {
+  const slot={id:'2026-10-21T10:00+05:30'};
+  const claims=await Promise.all([claimSlot(slot,dir),claimSlot(slot,dir),claimSlot(slot,dir)]);
+  assert.equal(claims.filter(Boolean).length,1);
+  assert.equal(await claimSlot(slot,dir),false);
+  assert.equal(await claimSlot({id:'2026-10-21T13:00+05:30'},dir),true);
+ } finally { await rm(dir,{recursive:true,force:true}); }
 });
 test('LLM adapter requests strict structured output and rejects refusals',async()=>{const {llm}=await import('../src/llm.js');const previous=process.env.LLM_API_KEY;process.env.LLM_API_KEY='fake-test-key';try{let payload;const response=await llm(config,'Return JSON',{}, {type:'object'},async(url,opts)=>{payload=JSON.parse(opts.body);return {choices:[{finish_reason:'stop',message:{content:'{"ok":true}'}}]};});assert.equal(response.ok,true);assert.equal(payload.response_format.json_schema.strict,true);await assert.rejects(llm(config,'x',{}, {},async()=>({choices:[{finish_reason:'stop',message:{refusal:'No'}}]})),/refused/);}finally{if(previous===undefined)delete process.env.LLM_API_KEY;else process.env.LLM_API_KEY=previous;}});
 test('image adapter makes one non-retried request per slide with visual constraints',async()=>{const {images}=await import('../src/images.js');const previous=process.env.IMAGE_API_KEY;process.env.IMAGE_API_KEY='fake-image-key';try{let calls=0;const result=await images(mockScript('Space'),config,async(url,opts,retry)=>{calls++;assert.equal(retry.attempts,1);const body=JSON.parse(opts.body);assert.equal(body.n,1);assert.match(body.prompt,/no text, letters/);assert.match(body.prompt,/watermarks/);return {data:[{b64_json:Buffer.from('image').toString('base64')}]};});assert.equal(calls,1);assert.equal(result.length,1);assert.equal(result[0].toString(),'image');}finally{if(previous===undefined)delete process.env.IMAGE_API_KEY;else process.env.IMAGE_API_KEY=previous;}});
