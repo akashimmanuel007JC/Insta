@@ -6,6 +6,7 @@ import {fetchCandidates} from './sources/index.js';
 import {loadLogs,saveLogs,dedupe,locked,storyId,storyLocked,relatedToPostHistory} from './log.js';
 import {selectByIntensity} from './intensity.js';
 import {script,validateScript} from './script.js';
+import {rewriteImagePrompts} from './image-prompt.js';
 import {images} from './images.js';
 import {compose} from './compose.js';
 import {stageImages,checkpoint,verifyURLs} from './host.js';
@@ -43,7 +44,8 @@ export async function prepare({config,now=new Date(),dry=process.env.DRY_RUN==='
  await saveLogs(logs,logRoot);
  if(!dry)await checkpoint('Reserve story before content generation');
  const m=mock?await import('./mock.js'):null;
- const copy=mock?validateScript(m.mockScript(category),chosen,category):await (services.script||script)(chosen,category,config);
+ let copy=mock?validateScript(m.mockScript(category),chosen,category):await (services.script||script)(chosen,category,config);
+ if(!mock)copy=await (services.rewriteImagePrompts||rewriteImagePrompts)(chosen,copy,config);
  record.caption=copy.caption;
  const buffers=mock?await m.mockImages(copy):await (services.images||images)(copy,config);
  const paths=await compose(buffers,copy,config,`output/${record.story_id}`);

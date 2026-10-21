@@ -7,6 +7,7 @@ import sharp from 'sharp';
 import {getSlot} from '../src/schedule.js';
 import {claimSlot,dedupe,locked,storyId,storyLocked,relatedToPostHistory} from '../src/log.js';
 import {script,validateScript} from '../src/script.js';
+import {rewriteImagePrompts,validateImagePrompts} from '../src/image-prompt.js';
 import {candidate,mockScript,mockImages} from '../src/mock.js';
 import {compose} from '../src/compose.js';
 import {publish,waitFinished,graph} from '../src/publish.js';
@@ -42,6 +43,29 @@ test('numeric claims accept equivalent source wording and formatting',()=>{
  assert.equal(validateScript(s,source,'Space'),s);
  const bad=structuredClone(s);bad.slides[0].body='7 ships affected across 1000 delayed journeys.';
  assert.throws(()=>validateScript(bad,source,'Space'),/Unsupported numeric claim: 7/);
+});
+test('LLM rewrites the image prompt from fetched news and final post copy',async()=>{
+ const original=mockScript('Space');let calls=0,input,system;
+ const rewritten=await rewriteImagePrompts(candidate,original,config,async(_config,prompt,payload)=>{
+  calls++;system=prompt;input=payload;
+  return {image_prompts:['Vertical editorial view of a laboratory planet-observation instrument, stellar light above and a clean dark lower foreground']};
+ });
+ assert.equal(calls,1);
+ assert.equal(input.article.text,candidate.text);
+ assert.equal(input.article.source_url,candidate.url);
+ assert.equal(input.post.headline,original.slides[0].headline);
+ assert.deepEqual(input.draft_image_prompts,original.image_prompts);
+ assert.match(system,/vertical 4:5/i);
+ assert.match(system,/lower portion/i);
+ assert.notEqual(rewritten.image_prompts[0],original.image_prompts[0]);
+ assert.equal(rewritten.caption,original.caption);
+});
+test('invalid rewritten image prompts get one correction attempt',async()=>{
+ const original=mockScript('Space');let calls=0;
+ const rewritten=await rewriteImagePrompts(candidate,original,config,async()=>++calls===1?{image_prompts:[]}:{image_prompts:['Grounded editorial laboratory scene with open lower composition']});
+ assert.equal(calls,2);
+ assert.equal(rewritten.image_prompts.length,1);
+ assert.throws(()=>validateImagePrompts({image_prompts:['']},original),/Invalid image prompt/);
 });
 test('compositing produces one real 1080x1350 JPEGs',async()=>{const dir=await mkdtemp(join(tmpdir(),'carousel-test-'));try{const s=mockScript('Space');const files=await compose(await mockImages(s),s,config,dir);assert.equal(files.length,1);for(const file of files){const m=await sharp(file).metadata();assert.equal(m.format,'jpeg');assert.equal(m.width,1080);assert.equal(m.height,1350);}}finally{await rm(dir,{recursive:true,force:true});}});
 test('single image, durable intent and quota check before publish',async()=>{const events=[];let n=0;const api=async(path,params,method)=>{events.push(path);if(path.endsWith('content_publishing_limit'))return {data:[{quota_usage:0,config:{quota_total:100}}]};if(path.endsWith('media_publish'))return {id:'published'};if(method==='POST'){assert.equal(params.image_url,'https://x/1.jpg');assert.equal(params.media_type,undefined);assert.equal(params.is_carousel_item,undefined);assert.ok(params.caption);return {id:String(++n)};}return {status_code:'FINISHED'};};const id=await publish(['https://x/1.jpg'],mockScript('Space'),api,{user:'ig',persist:async p=>events.push(p.publish_requested_at?'intent':'state')});assert.equal(id,'published');assert.equal(events.at(-2),'intent');assert.equal(events.at(-1),'ig/media_publish');assert.equal(events.filter(e=>e==='ig/content_publishing_limit').length,2);});
