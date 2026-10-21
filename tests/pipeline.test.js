@@ -57,6 +57,7 @@ test('LLM rewrites the image prompt from fetched news and final post copy',async
  assert.deepEqual(input.draft_image_prompts,original.image_prompts);
  assert.match(system,/vertical 4:5/i);
  assert.match(system,/lower portion/i);
+ assert.match(system,/face, portrait, or recognizable likeness is never required/i);
  assert.notEqual(rewritten.image_prompts[0],original.image_prompts[0]);
  assert.equal(rewritten.caption,original.caption);
 });
@@ -136,7 +137,7 @@ test('automatic publishing is backend-only and each persisted slot is claimed on
  } finally { await rm(dir,{recursive:true,force:true}); }
 });
 test('LLM adapter requests strict structured output and rejects refusals',async()=>{const {llm}=await import('../src/llm.js');const previous=process.env.LLM_API_KEY;process.env.LLM_API_KEY='fake-test-key';try{let payload;const response=await llm(config,'Return JSON',{}, {type:'object'},async(url,opts)=>{payload=JSON.parse(opts.body);return {choices:[{finish_reason:'stop',message:{content:'{"ok":true}'}}]};});assert.equal(response.ok,true);assert.equal(payload.response_format.json_schema.strict,true);await assert.rejects(llm(config,'x',{}, {},async()=>({choices:[{finish_reason:'stop',message:{refusal:'No'}}]})),/refused/);}finally{if(previous===undefined)delete process.env.LLM_API_KEY;else process.env.LLM_API_KEY=previous;}});
-test('image adapter makes one non-retried request per slide with visual constraints',async()=>{const {images}=await import('../src/images.js');const previous=process.env.IMAGE_API_KEY;process.env.IMAGE_API_KEY='fake-image-key';try{let calls=0;const result=await images(mockScript('Space'),config,async(url,opts,retry)=>{calls++;assert.equal(retry.attempts,1);const body=JSON.parse(opts.body);assert.equal(body.n,1);assert.match(body.prompt,/no text, letters/);assert.match(body.prompt,/watermarks/);return {data:[{b64_json:Buffer.from('image').toString('base64')}]};});assert.equal(calls,1);assert.equal(result.length,1);assert.equal(result[0].toString(),'image');}finally{if(previous===undefined)delete process.env.IMAGE_API_KEY;else process.env.IMAGE_API_KEY=previous;}});
+test('image adapter makes one non-retried request per slide with visual constraints',async()=>{const {images}=await import('../src/images.js');const previous=process.env.IMAGE_API_KEY;process.env.IMAGE_API_KEY='fake-image-key';try{let calls=0;const result=await images(mockScript('Space'),config,async(url,opts,retry)=>{calls++;assert.equal(retry.attempts,1);const body=JSON.parse(opts.body);assert.equal(body.n,1);assert.match(body.prompt,/no text, letters/);assert.match(body.prompt,/watermarks/);assert.match(body.prompt,/face, or portrait is not required/i);assert.doesNotMatch(body.prompt,/prioritize their face/i);return {data:[{b64_json:Buffer.from('image').toString('base64')}]};});assert.equal(calls,1);assert.equal(result.length,1);assert.equal(result[0].toString(),'image');}finally{if(previous===undefined)delete process.env.IMAGE_API_KEY;else process.env.IMAGE_API_KEY=previous;}});
 test('Azure adapter uses deployment routes and api-key authentication',async()=>{
  const {provider}=await import('../src/provider.js');
  const vars={AZURE_OPENAI_ENDPOINT:'https://test.openai.azure.com/',AZURE_OPENAI_DEPLOYMENT:'my-text',AZURE_OPENAI_API_VERSION:'2024-02-15-preview',AZURE_OPENAI_API_KEY:'fake'};
