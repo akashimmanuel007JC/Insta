@@ -148,8 +148,11 @@
       if (typeof result.imageUrl !== 'string' || !/^data:image\/jpeg;base64,[A-Za-z0-9+/=\s]+$/.test(result.imageUrl)) throw new Error('No valid image returned. Please try again.');
       get('image-redesign-result').src = result.imageUrl;
       get('image-redesign-download').href = result.imageUrl;
+      sourceImage = result.imageUrl;
+      sourcePreview.src = result.imageUrl;
+      input.value = '';
       output.hidden = false;
-      setStatus('image-redesign-status', 'Redesign ready. Download it or adjust the prompt and try another version.');
+      setStatus('image-redesign-status', 'Redesign ready at the source dimensions. It is now the source for your next change.');
     } catch (error) {
       setStatus('image-redesign-status', error.message || 'Could not connect. Please try again.', true);
     } finally {

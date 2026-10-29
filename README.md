@@ -209,7 +209,7 @@ For GitHub Actions with Azure enabled, add the same Azure variables as repositor
 
 ### Profile Studio
 
-The Studio includes prompt-based bio generation and source-image redesign using the configured text and image providers. Bios can be edited and copied (150 characters maximum). For an image redesign, paste, drop, or choose a PNG, JPEG, or WebP image up to 10 MB, describe the changes, and download the redesigned JPEG. Images are validated and normalized before being sent to the provider's image-edit endpoint. Generated results remain in the current browser page and are lost on refresh.
+The Studio includes prompt-based bio generation and source-image redesign using the configured text and image providers. Bios can be edited and copied (150 characters maximum). For an image redesign, paste, drop, or choose a PNG, JPEG, or WebP image up to 10 MB, describe the changes, and download the redesigned JPEG. Images are validated and normalized before being sent to the provider's image-edit endpoint, and results are returned at the source image's exact pixel dimensions. Each successful result automatically becomes the source for the next edit, so changes accumulate during the browser session. Generated results are lost on refresh.
 
 These are drafts: this integration does not update Instagram automatically. Use the Instagram profile link to paste the bio or upload a downloaded image manually. Restart `npm run studio` after updating the code. No extra credentials beyond the existing AI provider configuration are needed.
 
