@@ -1,5 +1,5 @@
 import http from 'node:http';
-import {generateBio, generateProfilePicture, profilePrompt} from './src/profile.js';
+import {generateBio, redesignImage, profilePrompt} from './src/profile.js';
 import { readFile, rm } from 'node:fs/promises';
 import { createReadStream, statSync } from 'node:fs';
 import { extname, join, basename } from 'node:path';
@@ -252,7 +252,7 @@ function sendFile(res, path, headers) {
 async function handleApi(req, res, url) {
   const config = await readJSON('config.json');
 
-  if (req.method === 'POST' && ['/api/profile/bio', '/api/profile/picture'].includes(url.pathname)) {
+  if (req.method === 'POST' && url.pathname === '/api/profile/bio') {
     res.setHeader('Cache-Control', 'no-store');
     try {
       let body = '';
@@ -269,14 +269,22 @@ async function handleApi(req, res, url) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ error: error instanceof SyntaxError ? 'Invalid JSON request.' : safeError(error) }));
       }
-      const result = url.pathname.endsWith('/bio')
-        ? await generateBio(prompt, config)
-        : await generateProfilePicture(prompt, config);
+      const result = await generateBio(prompt, config);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify(result));
     } catch (error) {
       res.writeHead(502, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: safeError(error) }));
+    }
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/image/redesign') {
+    try {
+      const body = await readRequestJson(req, 14_500_000);
+      const result = await redesignImage(body.prompt, body.image, config);
+      return json(res, 200, result);
+    } catch (error) {
+      return json(res, error.statusCode || 400, { error: safeError(error) });
     }
   }
 

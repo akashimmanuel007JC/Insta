@@ -19,11 +19,43 @@ export async function generateBio(prompt,config,call=llm) {
  }
  throw new Error('Could not generate a bio within 150 characters. Try simpler instructions.');
 }
-export async function generateProfilePicture(prompt,config,get=request) {
+
+export const MAX_EDIT_IMAGE_BYTES=10*1024*1024;
+
+export function decodeEditImage(value) {
+ if(typeof value!=='string')throw new Error('Paste or choose an image to redesign.');
+ const match=value.match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/);
+ if(!match)throw new Error('Use a PNG, JPEG, or WebP image.');
+ const buffer=Buffer.from(match[2],'base64');
+ if(!buffer.length)throw new Error('The source image is empty.');
+ if(buffer.length>MAX_EDIT_IMAGE_BYTES)throw new Error('Keep the source image under 10 MB.');
+ return buffer;
+}
+
+export async function redesignImage(prompt,image,config,get=request) {
  prompt=profilePrompt(prompt);
- const connection=provider(config,'image');
- const result=await get(connection.url,{method:'POST',headers:connection.headers,body:JSON.stringify({model:connection.model,n:1,size:'1024x1024',quality:'medium',prompt:`Create an Instagram profile picture according to these instructions: ${prompt}\nSquare composition with the subject centered and important details inside the central circular crop. Clear and recognizable at small avatar sizes. Follow the requested visual style. No additional watermarks or unrequested text.`})});
- if(!result.data?.[0]?.b64_json)throw new Error('Image API returned no profile picture.');
- const jpeg=await sharp(Buffer.from(result.data[0].b64_json,'base64')).resize(1024,1024,{fit:'cover'}).jpeg({quality:92}).toBuffer();
+ const source=decodeEditImage(image);
+ let normalized;
+ try {
+  normalized=await sharp(source,{limitInputPixels:40_000_000,failOn:'error'}).rotate().resize({width:2048,height:2048,fit:'inside',withoutEnlargement:true}).png().toBuffer();
+ } catch {
+  throw new Error('The source image is invalid or too large to process.');
+ }
+ const connection=provider(config,'image','edits');
+ const form=new FormData();
+ form.append('model',connection.model);
+ form.append('image',new Blob([normalized],{type:'image/png'}),'source.png');
+ form.append('prompt',`Redesign the supplied image according to these user instructions: ${prompt}\nUse the uploaded image as the visual source. Preserve subjects, identity, layout, and details that the user did not ask to change. Apply only the requested redesign. Do not add text, logos, or watermarks unless explicitly requested.`);
+ form.append('n','1');
+ form.append('size','auto');
+ form.append('quality','medium');
+ const result=await get(connection.url,{method:'POST',headers:connection.headers,body:form},{attempts:1});
+ if(!result.data?.[0]?.b64_json)throw new Error('Image API returned no redesigned image.');
+ let jpeg;
+ try {
+  jpeg=await sharp(Buffer.from(result.data[0].b64_json,'base64'),{limitInputPixels:40_000_000}).rotate().resize({width:2048,height:2048,fit:'inside',withoutEnlargement:true}).jpeg({quality:92}).toBuffer();
+ } catch {
+  throw new Error('Image API returned an invalid image.');
+ }
  return {imageUrl:`data:image/jpeg;base64,${jpeg.toString('base64')}`};
 }

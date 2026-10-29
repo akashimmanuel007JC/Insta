@@ -17,6 +17,7 @@ import {collectInsights} from '../src/insights.js';
 import {fetchCandidates} from '../src/sources/index.js';
 import {select} from '../src/select.js';
 import {intensityScore,selectByIntensity} from '../src/intensity.js';
+import {provider} from '../src/provider.js';
 import {automaticPublishingEnabledFor,selectAutomaticCandidate} from '../server.js';
 const config=JSON.parse(await readFile(new URL('../config.json',import.meta.url)));
 config.llm.provider='openai';config.llm.responseFormat='json_schema';config.image.provider='openai';
@@ -139,10 +140,15 @@ test('automatic publishing is backend-only and each persisted slot is claimed on
 test('LLM adapter requests strict structured output and rejects refusals',async()=>{const {llm}=await import('../src/llm.js');const previous=process.env.LLM_API_KEY;process.env.LLM_API_KEY='fake-test-key';try{let payload;const response=await llm(config,'Return JSON',{}, {type:'object'},async(url,opts)=>{payload=JSON.parse(opts.body);return {choices:[{finish_reason:'stop',message:{content:'{"ok":true}'}}]};});assert.equal(response.ok,true);assert.equal(payload.response_format.json_schema.strict,true);await assert.rejects(llm(config,'x',{}, {},async()=>({choices:[{finish_reason:'stop',message:{refusal:'No'}}]})),/refused/);}finally{if(previous===undefined)delete process.env.LLM_API_KEY;else process.env.LLM_API_KEY=previous;}});
 test('image adapter makes one non-retried request per slide with visual constraints',async()=>{const {images}=await import('../src/images.js');const previous=process.env.IMAGE_API_KEY;process.env.IMAGE_API_KEY='fake-image-key';try{let calls=0;const result=await images(mockScript('Space'),config,async(url,opts,retry)=>{calls++;assert.equal(retry.attempts,1);const body=JSON.parse(opts.body);assert.equal(body.n,1);assert.match(body.prompt,/no text, letters/);assert.match(body.prompt,/watermarks/);assert.match(body.prompt,/face, or portrait is not required/i);assert.doesNotMatch(body.prompt,/prioritize their face/i);return {data:[{b64_json:Buffer.from('image').toString('base64')}]};});assert.equal(calls,1);assert.equal(result.length,1);assert.equal(result[0].toString(),'image');}finally{if(previous===undefined)delete process.env.IMAGE_API_KEY;else process.env.IMAGE_API_KEY=previous;}});
 test('Azure adapter uses deployment routes and api-key authentication',async()=>{
- const {provider}=await import('../src/provider.js');
  const vars={AZURE_OPENAI_ENDPOINT:'https://test.openai.azure.com/',AZURE_OPENAI_DEPLOYMENT:'my-text',AZURE_OPENAI_API_VERSION:'2024-02-15-preview',AZURE_OPENAI_API_KEY:'fake'};
  const before=Object.fromEntries(Object.keys(vars).map(k=>[k,process.env[k]]));
  try {Object.assign(process.env,vars);const c=structuredClone(config);c.llm.provider='azure';const result=provider(c,'llm');assert.match(result.url,/deployments\/my-text\/chat\/completions\?api-version=2024-02-15-preview/);assert.equal(result.headers['api-key'],'fake');assert.equal(result.headers.Authorization,undefined);delete process.env.AZURE_OPENAI_DEPLOYMENT;assert.equal(provider(c,'llm').model,c.llm.model);process.env.AZURE_OPENAI_DEPLOYMENT='  ';assert.equal(provider(c,'llm').model,c.llm.model);delete c.llm.model;assert.throws(()=>provider(c,'llm'),/Set llm.model/);}finally{for(const [k,v]of Object.entries(before))if(v===undefined)delete process.env[k];else process.env[k]=v;}
+});
+
+test('Azure image edits use the edits route and let FormData set its boundary',()=>{
+ const vars={AZURE_OPENAI_IMAGE_ENDPOINT_1:'https://images.openai.azure.com/',AZURE_OPENAI_IMAGE_DEPLOYMENT:'image-model',AZURE_OPENAI_IMAGE_API_VERSION_1:'2025-04-01-preview',AZURE_OPENAI_IMAGE_API_KEY_1:'fake'};
+ const before=Object.fromEntries(Object.keys(vars).map(k=>[k,process.env[k]]));
+ try {Object.assign(process.env,vars);const c=structuredClone(config);c.image.provider='azure';const {url,headers}=provider(c,'image','edits');assert.match(url,/deployments\/image-model\/images\/edits\?api-version=2025-04-01-preview/);assert.equal(headers['api-key'],'fake');assert.equal(headers['Content-Type'],undefined);}finally{for(const [k,v]of Object.entries(before))if(v===undefined)delete process.env[k];else process.env[k]=v;}
 });
 
 test('Graph failures retain diagnostic codes and redact bearer tokens without retrying',async()=>{
