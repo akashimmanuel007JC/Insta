@@ -1,4 +1,5 @@
 import csv
+import hashlib
 import io
 import json
 import os
@@ -14,25 +15,35 @@ from flask import Flask, abort, flash, make_response, redirect, render_template,
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from config import ADMIN_NAME, COOKIE_SECURE, HOST, PORT
-from storage import JsonStore
+from storage import GitHubJsonStore, JsonStore
 
 BASE = Path(__file__).resolve().parent
 IS_RENDER = os.environ.get('RENDER') == 'true'  # Set automatically by Render; no .env file needed.
-STORAGE = Path('/var/data') if IS_RENDER else BASE / 'instance'
-if IS_RENDER and not STORAGE.is_dir():
-    raise RuntimeError('Render needs a persistent disk mounted at /var/data.')
-STORAGE.mkdir(exist_ok=True)
-STORE = JsonStore(STORAGE / 'polls.json')
-SECRET_FILE = STORAGE / 'secret.key'
-if not SECRET_FILE.exists():
-    try:
-        with SECRET_FILE.open('x') as secret_file:
-            secret_file.write(secrets.token_hex(32))
-        SECRET_FILE.chmod(0o600)
-    except FileExistsError:
-        pass
+DATA_REPO = 'akashimmanuel007JC/Insta'
+DATA_TOKEN = os.environ.get('GITHUB_DATA_TOKEN', '').strip()
+DATA_KEY = os.environ.get('GITHUB_DATA_KEY', '').strip()
+USE_GITHUB_STORE = IS_RENDER and bool(DATA_TOKEN and DATA_KEY)
+if USE_GITHUB_STORE:
+    STORE = GitHubJsonStore(DATA_REPO, DATA_TOKEN, DATA_KEY)
+    STORE.verify_branch()
+    secret_key = hashlib.sha256(b'JLYF session key\0' + DATA_KEY.encode('utf-8')).hexdigest()
+else:
+    STORAGE = Path('/var/data') if IS_RENDER else BASE / 'instance'
+    if IS_RENDER and not STORAGE.is_dir():
+        raise RuntimeError('Configure GITHUB_DATA_TOKEN and GITHUB_DATA_KEY, or attach a disk at /var/data.')
+    STORAGE.mkdir(exist_ok=True)
+    STORE = JsonStore(STORAGE / 'polls.json')
+    SECRET_FILE = STORAGE / 'secret.key'
+    if not SECRET_FILE.exists():
+        try:
+            with SECRET_FILE.open('x') as secret_file:
+                secret_file.write(secrets.token_hex(32))
+            SECRET_FILE.chmod(0o600)
+        except FileExistsError:
+            pass
+    secret_key = SECRET_FILE.read_text().strip()
 app = Flask(__name__)
-app.secret_key = SECRET_FILE.read_text().strip()
+app.secret_key = secret_key
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax',
                   SESSION_COOKIE_SECURE=IS_RENDER or COOKIE_SECURE)
 if IS_RENDER:
@@ -71,7 +82,7 @@ def secure_headers(response):
 
 
 def init_data():
-    if STORE.path.exists():
+    if STORE.exists():
         STORE.read()  # Fail clearly if existing JSON is damaged.
         return
 

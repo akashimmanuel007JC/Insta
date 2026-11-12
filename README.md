@@ -1,6 +1,6 @@
 # JLYF Polls
 
-A small, phone-friendly poll app for a group. It uses Flask, one JSON data file, server-rendered pages, and a little JavaScript. No external database is needed.
+A small, phone-friendly poll app for a group. It uses Flask, one JSON data file, server-rendered pages, and a little JavaScript. Locally the JSON file is on disk; on free Render it lives as an encrypted JSON file on the `poll-data` branch of this same GitHub repository.
 
 ## Run locally
 
@@ -19,11 +19,27 @@ Polls and votes are stored in `instance/polls.json`. Each change is saved atomic
 
 ## Render deployment
 
-The included [`render.yaml`](render.yaml) configures a Python web service with Gunicorn, one worker, a health check, and a persistent disk at `/var/data`. Connect this repository to Render and create a Blueprint from `render.yaml`. On Render, the app writes `/var/data/polls.json` and `/var/data/secret.key` and starts with no sample polls. Render provides `PORT` and `RENDER` automatically; you do not need to create a `.env` file. The app uses secure cookies when it detects Render.
+The included [`render.yaml`](render.yaml) configures a free Python web service with Gunicorn. Render's free local files do not persist, so the app saves an **encrypted `polls.json` in this same GitHub repository**. It uses a separate `poll-data` branch, while Render deploys `main`. Votes therefore do not start a new deployment. There is no paid disk and no second app service.
 
-**Use the paid service with the attached disk.** Render's regular filesystem is temporary, so a JSON file there would be lost when the service restarts or redeploys. A persistent disk also limits the service to one instance and may cause a brief interruption during deploys. [Render disk documentation](https://render.com/docs/disks).
+1. On GitHub, open this repository (`akashimmanuel007JC/Insta`). Use the branch menu to create a new branch named **`poll-data`** from `main`. Do not set Render to deploy `poll-data`; keep its branch set to `main`.
+2. Create a [fine-grained personal access token](https://github.com/settings/personal-access-tokens/new) scoped only to this repository with **Contents: Read and write** permission. Copy it somewhere safe. GitHub requires this token to write the JSON file.
+3. Generate a separate encryption key on your computer after `pip install -r requirements.txt`:
 
-The local `instance/polls.json` is not uploaded automatically. If you want those local polls on Render, copy that file to `/var/data/polls.json` using Render Shell before sharing the site. Keep an off-service backup of the JSON file. If you have an older `instance/polls.db`, `python scripts/migrate_sqlite_to_json.py` converts it once; it refuses to overwrite an existing JSON file.
+   ```sh
+   .venv/bin/python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+   ```
+
+   Save this key privately. If it is lost, existing votes cannot be read. Do not put either the key or the token in Git or in a shared message.
+
+   To move existing local polls and votes to GitHub, run `.venv/bin/python scripts/import_local_to_github.py` now. It prompts privately for the token and the same key. It refuses to overwrite existing GitHub poll data.
+4. In Render, keep the service runtime **Python 3**, deployment branch **`main`**, build command `pip install -r requirements.txt`, and start command `gunicorn app:app --workers 1 --threads 4 --bind 0.0.0.0:$PORT --access-logfile -`. In **Environment**, set `GITHUB_DATA_TOKEN` to the token from step 2 and `GITHUB_DATA_KEY` to the key from step 3. The repository and data branch are already set in the code. Render sets `PORT` and `RENDER` automatically.
+5. Push this app change to `main` and deploy. If you did not import local data, the app writes an encrypted `polls.json` commit to `poll-data` on first start. Create a poll, vote from another browser, restart the Render service, and confirm the vote remains.
+
+The `poll-data` branch starts as a copy of `main`; it may show the app code as well as the encrypted JSON. Do not merge `poll-data` into `main`. Changes to `main` remain the only source for app deployments. [GitHub's contents API](https://docs.github.com/en/rest/repos/contents) handles reads and writes, with retries for simultaneous votes. GitHub availability and API limits still affect voting.
+
+If the build logs show `npm ci`, update the existing Render service to the Python build command above. If startup reports a missing `/var/data` directory, one or both GitHub settings are missing. If it reports `poll-data` missing, create that branch in GitHub first. The app must keep the same `GITHUB_DATA_KEY` across deployments; changing the GitHub token does not change the encryption key.
+
+The local `instance/polls.json` is not uploaded automatically. Use the import script above to move it. Never commit the local plaintext file to GitHub. Keep an off-service backup of the encrypted `poll-data/polls.json` and the encryption key. If you have an older `instance/polls.db`, `python scripts/migrate_sqlite_to_json.py` converts it locally once; it refuses to overwrite an existing local JSON file.
 
 **Important:** The passwordless admin login is deliberately simple and is suitable only for a trusted group. Anyone who knows or guesses `ADMIN_NAME` can enter the admin dashboard. Change the name before sharing the app.
 
