@@ -1,0 +1,5 @@
+{% extends 'base.html' %}
+{% block title %}{{ code }} · JLYF{% endblock %}
+{% block content %}
+<section class="error-page"><span class="eyebrow"><span class="eyebrow-dot"></span> A SMALL DETOUR</span><div class="error-code">{{ code }}</div><h1>{{ 'Poll not found' if code == 404 else 'Something went wrong' }}</h1><p>{{ message }}</p><a class="button button-primary" href="{{ '/admin' if is_admin else '/' }}">Go back home <span aria-hidden="true">→</span></a></section>
+{% endblock %}

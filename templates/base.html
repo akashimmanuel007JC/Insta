@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f6f4ed">
+  <title>{% block title %}JLYF · Polls{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+</head>
+<body>
+  <div class="site-shell">
+    <header class="site-header">
+      <a class="brand" href="{{ '/admin' if is_admin else '/' }}" aria-label="JLYF home"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>JLYF<span class="brand-dot">.</span></span></a>
+      {% if user_name %}
+      <nav class="header-actions" aria-label="Account">
+        <span class="hello">Hi, <strong>{{ user_name }}</strong></span>
+        <form method="post" action="/logout" class="inline-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="text-button" type="submit">Log out <span aria-hidden="true">↗</span></button></form>
+      </nav>
+      {% endif %}
+    </header>
+
+    <main id="main-content" class="main-content">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-stack" role="status" aria-live="polite">
+          {% for category, text in messages %}<div class="flash flash-{{ category|e }}">{{ text }}</div>{% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+      {% if error %}<div class="flash flash-error" role="alert">{{ error }}</div>{% endif %}
+      {% block content %}{% endblock %}
+    </main>
+    <footer class="site-footer"><span>Made for your people.</span><span>JLYF · one voice at a time</span></footer>
+  </div>
+</body>
+</html>

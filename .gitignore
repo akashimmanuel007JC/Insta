@@ -1,7 +1,7 @@
-node_modules/
-.env*
-!.env.example
-output/
-.pages-build/
-*.tmp
+.venv/
+__pycache__/
+*.py[cod]
+.env
+*.db
+instance/
 .DS_Store

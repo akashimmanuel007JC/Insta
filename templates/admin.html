@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block title %}Admin dashboard · JLYF{% endblock %}
+{% block content %}
+<section class="page-heading admin-heading"><div><span class="eyebrow"><span class="eyebrow-dot"></span> Admin space</span><h1>Polls at a <em>glance.</em></h1><p>Create a question, share the link, and see what your group thinks.</p></div><a href="/admin/polls/new" class="button button-primary">+ Create new poll</a></section>
+<section class="dashboard-section" aria-labelledby="all-polls-title"><div class="section-heading"><div><span class="section-kicker">YOUR DASHBOARD</span><h2 id="all-polls-title">All polls <span class="count-badge">{{ polls|length }}</span></h2></div></div>
+{% if polls %}<div class="admin-polls">{% for poll in polls %}
+  <article class="admin-poll">
+    <div class="admin-poll-primary">
+      <div class="poll-meta"><span class="status status-{{ poll.status|lower }}"><span class="status-dot"></span>{{ poll.status|title }}</span><span class="meta-divider">·</span><span>ID: {{ poll.id }}</span></div>
+      <h3><a href="/admin/polls/{{ poll.id }}">{{ poll.title }}</a></h3>
+      <p class="admin-vote-count">{{ poll.vote_count|default(0) }} {{ 'vote' if poll.vote_count|default(0) == 1 else 'votes' }}</p>
+      {% if poll.description %}<p class="admin-poll-description">{{ poll.description|truncate(85) }}</p>{% endif %}
+    </div>
+    <div class="admin-poll-actions" aria-label="Actions for {{ poll.title }}">
+      <a href="/admin/polls/{{ poll.id }}" class="action-link action-main">View results <span aria-hidden="true">↗</span></a>
+      {% if poll.status != 'draft' %}<button type="button" class="action-link action-main js-copy-link" data-copy-url="/poll/{{ poll.id }}">Copy link <span aria-hidden="true">⧉</span></button>{% endif %}
+      <a href="/admin/polls/{{ poll.id }}/edit" class="action-link">Edit poll</a>
+      <a href="/admin/polls/{{ poll.id }}/export" class="action-link">Export CSV</a>
+      {% if poll.status == 'draft' %}<a href="/admin/polls/{{ poll.id }}/edit" class="action-link">Publish draft</a>{% else %}<form method="post" action="/admin/polls/{{ poll.id }}/toggle"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="action-link">{{ 'Reopen poll' if poll.status == 'closed' else 'Close poll' }}</button></form>{% endif %}
+      <form method="post" action="/admin/polls/{{ poll.id }}/delete" class="js-confirm-delete"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="action-link action-danger">Delete poll</button></form>
+    </div>
+  </article>
+{% endfor %}</div>{% else %}<div class="empty-state"><span class="empty-icon" aria-hidden="true">✳</span><h3>Your first poll starts here.</h3><p>Ask a quick question and invite your group to weigh in.</p><a class="button button-primary" href="/admin/polls/new">Create a poll <span aria-hidden="true">→</span></a></div>{% endif %}
+</section>
+<div class="toast" role="status" aria-live="polite" id="toast"></div>
+{% endblock %}

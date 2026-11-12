@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block title %}Welcome · JLYF{% endblock %}
+{% block content %}
+<section class="login-layout" aria-labelledby="login-title">
+  <div class="login-intro">
+    <span class="eyebrow"><span class="eyebrow-dot"></span> A little space for every voice</span>
+    <h1 id="login-title">Good plans start <em>together.</em></h1>
+    <p>Quick polls for the moments your group is making together. Say hello to get started.</p>
+    <div class="login-art" aria-hidden="true"><div class="art-card art-card-a"><span class="art-symbol">✳</span><span>What works for you?</span><b>Saturday, 4 pm</b></div><div class="art-card art-card-b"><span class="art-check">✓</span><span>You're in!</span></div><div class="art-scribble">↗</div></div>
+  </div>
+  <div class="login-panel">
+    <div class="panel-topline"><span class="step-number">01 / 01</span><span class="panel-decoration" aria-hidden="true">✳</span></div>
+    <h2>Welcome in.</h2>
+    <p>Just your name. No password needed.</p>
+    <form method="post" action="/login" class="stack-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="next" value="{{ next_url|default('', true) }}">
+      <label for="name">Your name</label>
+      <input id="name" name="name" type="text" autocomplete="name" maxlength="80" required autofocus placeholder="Enter your name">
+      <button class="button button-primary button-full" type="submit">Continue <span aria-hidden="true">→</span></button>
+    </form>
+    <p class="form-note">Use the same name next time to keep things familiar.</p>
+  </div>
+</section>
+{% endblock %}

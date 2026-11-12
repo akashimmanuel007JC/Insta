@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block title %}Find a poll · JLYF{% endblock %}
+{% block content %}
+<section class="page-heading home-heading"><div><span class="eyebrow"><span class="eyebrow-dot"></span> Your group, your say</span><h1>What's happening, <em>{{ user_name }}</em>?</h1><p>Jump into a poll and help your group decide.</p></div><div class="heading-spark" aria-hidden="true">✳</div></section>
+<section class="join-panel" aria-labelledby="join-title"><div><span class="section-kicker">JOIN A POLL</span><h2 id="join-title">Find your poll</h2><p>Enter the poll ID shared by your group leader.</p></div><form method="get" action="/go" class="join-form"><label for="poll-id">Poll ID</label><input id="poll-id" name="poll_id" type="text" minlength="6" maxlength="8" autocapitalize="none" autocomplete="off" spellcheck="false" placeholder="e.g. k7x9qa" required><button class="button button-primary" type="submit">Go to poll <span aria-hidden="true">→</span></button></form></section>
+<section class="list-section" aria-labelledby="live-title"><div class="section-heading"><div><span class="section-kicker">OPEN NOW</span><h2 id="live-title">Live polls <span class="count-badge">{{ polls|length }}</span></h2></div><span class="section-aside">Your opinion matters here.</span></div>
+  {% if polls %}<div class="poll-list">{% for poll in polls %}<article class="poll-list-item"><div class="poll-list-main"><div class="poll-meta"><span class="status status-live"><span class="status-dot"></span> Live</span></div><h3><a href="/poll/{{ poll.id }}">{{ poll.title }}</a></h3>{% if poll.description %}<p>{{ poll.description|truncate(135) }}</p>{% endif %}</div><a class="round-arrow" href="/poll/{{ poll.id }}" aria-label="Vote in {{ poll.title }}">↗</a></article>{% endfor %}</div>
+  {% else %}<div class="empty-state"><span class="empty-icon" aria-hidden="true">✳</span><h3>It's quiet for now.</h3><p>No live polls yet. Check back soon, or enter a poll code above.</p></div>{% endif %}
+</section>
+{% endblock %}
